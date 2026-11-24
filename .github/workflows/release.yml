@@ -1,0 +1,49 @@
+# v から始まるタグ (例: v0.3.1) を push すると、インストーラーと自動更新用ファイルを作って
+# GitHub Release に公開する。インストール済みの FixPoint は、ここを見て自動更新する。
+#
+#   git tag -a v0.3.1 -m "変更内容をここに書く（リリースページと更新のお知らせに表示されます）"
+#   git push origin v0.3.1
+name: リリース作成
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: インストーラーと更新ファイルを作って公開
+    runs-on: ubuntu-latest
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: タグのメッセージを取得
+        run: git fetch --force --tags
+
+      - name: Python を用意
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 構文チェック
+        run: python -m py_compile fixpoint.py fixpoint_lock.py launcher.py updater.py publish.py
+
+      - name: リリースファイルを作成
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          NOTES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
+          python publish.py --version "$VER" --notes "$NOTES"
+          ls -la release
+
+      - name: GitHub Release を公開
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" $(ls release/* | grep -v RELEASE_NOTES.md) \
+            --title "FixPoint $GITHUB_REF_NAME" \
+            --notes-file release/RELEASE_NOTES.md

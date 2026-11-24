@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FixPoint</title>
+<style>
+:root{
+  --bg:#f7f6f3;--surface:#ffffff;--surface2:#f1efe8;--text:#1f1e1b;--text2:#5f5e5a;--muted:#8a8984;
+  --border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);
+  --accent:#185fa5;--accent-bg:#e6f1fb;--ok:#3b6d11;--ok-bg:#eaf3de;--warn:#854f0b;--warn-bg:#faeeda;
+  --bad:#a32d2d;--bad-bg:#fcebeb;--pro:#534ab7;--pro-bg:#eeedfe;
+  --add:#1a7f37;--add-bg:#e6ffec;--del:#cf222e;--del-bg:#ffebe9;
+  --mono:ui-monospace,SFMono-Regular,Consolas,"Cascadia Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#1a1a19;--surface:#242423;--surface2:#2c2c2a;--text:#ecebe6;--text2:#b4b2a9;--muted:#888780;
+  --border:rgba(255,255,255,.10);--border2:rgba(255,255,255,.2);
+  --accent:#85b7eb;--accent-bg:#0c2d4f;--ok:#97c459;--ok-bg:#1f3a0a;--warn:#ef9f27;--warn-bg:#3d2604;
+  --bad:#f09595;--bad-bg:#4a1515;--pro:#afa9ec;--pro-bg:#2a2560;
+  --add:#7ee787;--add-bg:#12351c;--del:#ffa198;--del-bg:#4a1a1a;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 var(--sans)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:6px 14px;cursor:pointer}
+button:hover{background:var(--surface2)}
+button.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+button.primary:hover{opacity:.88}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+input,select,textarea{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;width:100%}
+textarea{resize:vertical;min-height:64px}
+label{font-size:12px;color:var(--text2);display:block;margin:0 0 4px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{font-size:16px;font-weight:600;margin:0}
+.proj{font-family:var(--mono);font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
+.pill{font-size:12px;padding:2px 10px;border-radius:999px;background:var(--surface2);color:var(--text2);white-space:nowrap}
+.pill.running{background:var(--accent-bg);color:var(--accent)}
+.pill.consensus{background:var(--ok-bg);color:var(--ok)}
+.pill.stopped,.pill.max_rounds{background:var(--warn-bg);color:var(--warn)}
+.pill.error{background:var(--bad-bg);color:var(--bad)}
+.spacer{flex:1}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;padding:20px;max-width:1400px;margin:0 auto}
+@media (max-width:860px){.layout{grid-template-columns:1fr;padding:16px}.proj{max-width:80vw}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.side{display:flex;flex-direction:column;gap:14px}
+.sec-title{font-size:12px;color:var(--text2);margin:0 0 8px;font-weight:600;letter-spacing:.02em}
+.agent{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border)}
+.agent:first-of-type{border-top:0}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex:none}
+.agent .nm{font-weight:600}
+.agent .sub{font-size:12px;color:var(--muted)}
+.state{font-size:12px;color:var(--text2)}
+.state.busy::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.vd{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.vd.APPROVE{background:var(--ok-bg);color:var(--ok)}
+.vd.CHANGES{background:var(--warn-bg);color:var(--warn)}
+.vd.UNKNOWN,.vd.ERROR{background:var(--bad-bg);color:var(--bad)}
+.cli{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+.cli .ok{color:var(--ok)} .cli .ng{color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+.meter{display:flex;gap:4px;align-items:center}
+.meter span{width:22px;height:8px;border-radius:4px;background:var(--surface2)}
+.meter span.APPROVE{background:var(--ok)} .meter span.CHANGES{background:var(--warn)} .meter span.UNKNOWN,.meter span.ERROR{background:var(--bad)}
+.timeline{display:flex;flex-direction:column;gap:14px;min-width:0}
+.round-h{display:flex;align-items:center;gap:10px;margin-top:8px;font-weight:600}
+.round-h::after{content:"";flex:1;height:1px;background:var(--border)}
+.turn{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-width:0}
+.turn-h{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
+.turn-h .who{font-weight:600}
+.turn-h .ph{color:var(--muted)}
+.turn-b{padding:10px 14px;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto;font-size:13px}
+.turn.collapsed .turn-b{max-height:120px}
+.tool{font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:1px 6px;display:inline-block;margin:2px 0}
+.reviews{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+details.diff{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 14px}
+details.diff summary{cursor:pointer;font-size:13px;color:var(--text2)}
+.diff pre{font-family:var(--mono);font-size:12px;overflow:auto;max-height:480px;margin:8px 0 0}
+.diff .a{color:var(--add);background:var(--add-bg);display:block}
+.diff .d{color:var(--del);background:var(--del-bg);display:block}
+.diff .h{color:var(--pro);display:block}
+.banner{border-radius:12px;padding:14px 16px;font-weight:600}
+.banner.consensus{background:var(--ok-bg);color:var(--ok)}
+.banner.stopped,.banner.max_rounds{background:var(--warn-bg);color:var(--warn)}
+.banner.error{background:var(--bad-bg);color:var(--bad)}
+.note{font-size:13px;border-left:3px solid var(--pro);padding:4px 12px;color:var(--text2)}
+.info{font-size:12px;color:var(--muted)}
+.row{display:grid;gap:10px}
+.agent-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 2fr auto;gap:8px;align-items:end;padding:8px 0;border-top:1px solid var(--border)}
+@media (max-width:860px){.agent-row{grid-template-columns:1fr 1fr}}
+.err{color:var(--bad);font-size:13px;min-height:1em}
+.muted{color:var(--muted)}
+.hidden{display:none!important}
+.goal{font-size:13px;white-space:pre-wrap;color:var(--text2)}
+</style>
+</head>
+<body>
+<header>
+  <h1>FixPoint</h1><span class="muted" style="font-size:12px">直すところがなくなるまで</span>
+  <span class="proj" id="hProj"></span>
+  <span class="pill" id="hStatus">待機</span>
+  <span class="pill hidden" id="hRound"></span>
+  <span class="meter" id="hMeter" title="現在のラウンドの判定"></span>
+  <span class="spacer"></span>
+  <span class="muted" id="hVer" style="font-size:12px"></span>
+  <button id="btnNew" class="hidden">新しいセッション</button>
+  <button id="btnQuit" title="FixPoint を終了">終了</button>
+</header>
+<div id="updBar" class="hidden" style="background:var(--accent-bg);color:var(--accent);padding:8px 20px;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  <span id="updText"></span><span class="spacer"></span>
+  <button id="btnUpd" style="font-size:12px;padding:3px 10px">今すぐ更新</button>
+</div>
+
+<div class="layout">
+  <aside class="side">
+    <div class="card" id="teamCard">
+      <p class="sec-title">チーム</p>
+      <div id="teamList"><div class="muted" style="font-size:13px">セッション開始前です</div></div>
+    </div>
+
+    <div class="card hidden" id="ctlRunning">
+      <p class="sec-title">人間からの介入</p>
+      <textarea id="noteText" placeholder="例: UIは日本語にしてください。テストも必ず書くこと"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="btnNote" class="primary">メモを送る</button>
+        <span class="spacer"></span>
+        <button id="btnStop" class="danger">停止</button>
+      </div>
+      <div class="hint">メモは次のラウンドに指摘として渡されます。メモがある間は合意で終わりません。</div>
+    </div>
+
+    <div class="card hidden" id="ctlDone">
+      <p class="sec-title">続ける</p>
+      <textarea id="contNote" placeholder="追加の指示（任意）: 例: エラー処理も入れて"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <label style="margin:0">追加ラウンド</label>
+        <input id="contRounds" type="number" min="1" max="20" value="3" style="width:70px">
+        <span class="spacer"></span>
+        <button id="btnCont" class="primary">再開</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="sec-title">AI CLI（ログインは各CLIで）</p>
+      <div id="cliList"></div>
+      <div class="hint">各AIのCLIを、このPCで自分のアカウントにログインした状態で使います。FixPoint は認証情報を扱いません。</div>
+    </div>
+  </aside>
+
+  <main>
+    <section class="card hidden" id="setup">
+      <p class="sec-title">新しいセッション</p>
+      <div class="row">
+        <div><label>プロジェクトのフォルダ</label><input id="fProject" spellcheck="false"></div>
+        <div><label>ゴール（全員が「これでいい」と言ったら終わり）</label>
+          <textarea id="fGoal" rows="4" placeholder="例: Discord の読み上げBotに、ユーザーごとに声を変えられる /voice コマンドを追加する。READMEに使い方も書く。"></textarea></div>
+        <div>
+          <label>メンバー（上から順に最初の実装担当）</label>
+          <div id="agentRows"></div>
+          <button id="btnAddAgent" style="margin-top:8px">＋ メンバーを追加</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+          <div><label>最大ラウンド数</label><input id="fRounds" type="number" min="1" max="30" value="6"></div>
+          <div><label>実装担当の権限</label>
+            <select id="fPerm">
+              <option value="acceptEdits">ファイル編集だけ（いちばん安全）</option>
+              <option value="editsAndCommands">編集＋コマンド実行（テストを回せる）</option>
+              <option value="bypassPermissions">すべて自動許可（注意）</option>
+            </select></div>
+          <div><label>git チェックポイント</label>
+            <select id="fGit"><option value="1">ターンごとにコミット（推奨）</option><option value="0">使わない</option></select></div>
+        </div>
+        <div class="err" id="setupErr"></div>
+        <div><button id="btnStart" class="primary">開始</button></div>
+      </div>
+    </section>
+
+    <section class="timeline" id="timeline"></section>
+  </main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const H = {"Content-Type":"application/json","X-Fixpoint":"1"};
+const COLORS = [["#e6f1fb","#0c447c"],["#eeedfe","#3c3489"],["#e1f5ee","#085041"],["#faece7","#712b13"],["#fbeaf0","#72243e"],["#faeeda","#633806"]];
+const DARK = matchMedia("(prefers-color-scheme: dark)").matches;
+const colorOf = i => { const c = COLORS[i % COLORS.length]; return DARK ? [c[1], c[0]] : c; };
+let INFO = null, S = null; // S = セッション状態 (イベントから再構築)
+
+function esc(s){return (s??"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+async function post(url, body){
+  const r = await fetch(url,{method:"POST",headers:H,body:JSON.stringify(body||{})});
+  const j = await r.json().catch(()=>({error:"応答を読めませんでした"}));
+  if(!r.ok || j.error) throw new Error(j.error||("HTTP "+r.status));
+  return j;
+}
+function store(k,v){try{localStorage.setItem("fixpoint."+k,JSON.stringify(v))}catch(e){}}
+function load(k,d){try{const v=localStorage.getItem("fixpoint."+k);return v?JSON.parse(v):d}catch(e){return d}}
+
+/* ---------- セットアップ ---------- */
+function defaultAgents(){
+  const c = INFO?.clis||{}, out=[];
+  if(c.claude?.installed){
+    out.push({name:"Claude-A",kind:"claude",model:"opus",role:"実装を主導する。全体設計を考える"});
+    out.push({name:"Claude-B",kind:"claude",model:"sonnet",role:"テストと品質に厳しいレビュアー。動くかを必ず確かめる"});
+  }
+  if(c.grok?.installed){ if(out.length>1) out.pop(); out.push({name:"Grok",kind:"grok",model:"",role:"別の視点から設計と抜け漏れを指摘するレビュアー"}); }
+  if(c.codex?.installed) out.push({name:"Codex",kind:"codex",model:"",role:"シンプルさと保守性を重視"});
+  if(c.gemini?.installed) out.push({name:"Gemini",kind:"gemini",model:"",role:"ドキュメントと使いやすさを重視"});
+  if(!out.length) out.push({name:"Mock-A",kind:"mock",model:"",role:""},{name:"Mock-B",kind:"mock",model:"",role:""});
+  return out;
+}
+function agentRow(a){
+  const d = document.createElement("div"); d.className="agent-row";
+  const opts = Object.entries(INFO.clis).map(([k,v])=>`<option value="${k}" ${k===a.kind?"selected":""} ${v.installed?"":"disabled"}>${esc(v.label)}${v.installed?"":"（未インストール）"}</option>`).join("");
+  d.innerHTML = `<div><label>名前</label><input class="aName" value="${esc(a.name)}"></div>
+    <div><label>種類</label><select class="aKind">${opts}</select></div>
+    <div><label>モデル（任意）</label><input class="aModel" value="${esc(a.model)}" placeholder="既定"></div>
+    <div><label>役割・性格（任意）</label><input class="aRole" value="${esc(a.role)}"></div>
+    <button class="aDel" title="削除" aria-label="削除">×</button>`;
+  d.querySelector(".aDel").onclick=()=>{d.remove();saveForm()};
+  d.querySelectorAll("input,select").forEach(e=>e.oninput=saveForm);
+  return d;
+}
+function readAgents(){return [...document.querySelectorAll(".agent-row")].map(r=>({name:r.querySelector(".aName").value.trim(),kind:r.querySelector(".aKind").value,model:r.querySelector(".aModel").value.trim(),role:r.querySelector(".aRole").value.trim()}))}
+function saveForm(){store("form",{goal:$("#fGoal").value,agents:readAgents(),rounds:$("#fRounds").value,perm:$("#fPerm").value,git:$("#fGit").value})}
+function showSetup(){
+  const f = load("form",null);
+  $("#fProject").value = INFO.project;
+  $("#fGoal").value = f?.goal||"";
+  $("#fRounds").value = f?.rounds||6; $("#fPerm").value=f?.perm||"acceptEdits"; $("#fGit").value=f?.git||"1";
+  const rows=$("#agentRows"); rows.innerHTML="";
+  const ags = (f?.agents?.length? f.agents.filter(a=>INFO.clis[a.kind]?.installed) : null) || defaultAgents();
+  (ags.length?ags:defaultAgents()).forEach(a=>rows.appendChild(agentRow(a)));
+  $("#setup").classList.remove("hidden"); $("#btnNew").classList.add("hidden");
+}
+$("#btnAddAgent").onclick=()=>{const k=INFO.clis.claude?.installed?"claude":"mock";$("#agentRows").appendChild(agentRow({name:`AI-${document.querySelectorAll(".agent-row").length+1}`,kind:k,model:"",role:""}));saveForm()};
+["#fGoal","#fRounds","#fPerm","#fGit"].forEach(s=>$(s).oninput=saveForm);
+$("#btnStart").onclick=async()=>{
+  $("#setupErr").textContent="";
+  try{
+    $("#btnStart").disabled=true;
+    await post("/api/start",{project:$("#fProject").value,goal:$("#fGoal").value,agents:readAgents(),
+      max_rounds:+$("#fRounds").value,permission:$("#fPerm").value,use_git:$("#fGit").value==="1"});
+    $("#setup").classList.add("hidden");
+  }catch(e){$("#setupErr").textContent=e.message}finally{$("#btnStart").disabled=false}
+};
+$("#btnNew").onclick=()=>{ if(S && S.status==="running") return; $("#timeline").innerHTML=""; showSetup(); window.scrollTo(0,0)};
+
+/* ---------- 実行中の操作 ---------- */
+$("#btnNote").onclick=async()=>{const t=$("#noteText").value.trim(); if(!t) return; try{await post("/api/note",{text:t}); $("#noteText").value=""}catch(e){alert(e.message)}};
+$("#btnStop").onclick=async()=>{ if(!confirm("実行中のAIを止めます。よろしいですか？")) return; try{await post("/api/stop")}catch(e){alert(e.message)}};
+$("#btnCont").onclick=async()=>{try{await post("/api/continue",{rounds:+$("#contRounds").value,note:$("#contNote").value}); $("#contNote").value=""}catch(e){alert(e.message)}};
+
+/* ---------- イベント → 画面 ---------- */
+function resetState(){S={agents:[],byId:{},turns:{},round:0,max:0,status:"idle",verdicts:{},roundEl:{},reviewsEl:{}}; $("#timeline").innerHTML=""}
+function agentName(id){return S.byId[id]?.name||id}
+function renderTeam(){
+  const tl=$("#teamList");
+  if(!S.agents.length){return}
+  tl.innerHTML = S.agents.map((a,i)=>{
+    const [bg,fg]=colorOf(i); const st=a._state||"待機"; const v=a._verdict;
+    return `<div class="agent"><div class="av" style="background:${bg};color:${fg}">${esc(a.name.slice(0,2))}</div>
+      <div style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span class="nm">${esc(a.name)}</span>${v?`<span class="vd ${v}">${v}</span>`:""}</div>
+      <div class="sub">${esc(INFO.clis[a.kind]?.label||a.kind)}${a.model?" · "+esc(a.model):""}</div>
+      ${a.role?`<div class="sub">${esc(a.role)}</div>`:""}
+      <div class="state ${a._busy?"busy":""}">${esc(st)}</div></div></div>`}).join("");
+}
+function renderHeader(){
+  const st=S.status, label={idle:"待機",running:"作業中",consensus:"不動点に到達",stopped:"停止",max_rounds:"上限到達",error:"エラー"}[st]||st;
+  const p=$("#hStatus"); p.className="pill "+st; p.textContent=label;
+  const r=$("#hRound"); if(S.round){r.classList.remove("hidden"); r.textContent=`ラウンド ${S.round} / ${S.max}`}
+  const v=S.verdicts[S.round]||{};
+  $("#hMeter").innerHTML=S.agents.map(a=>`<span class="${v[a.id]||""}" title="${esc(a.name)}: ${v[a.id]||"未判定"}"></span>`).join("");
+  const running = st==="running";
+  $("#ctlRunning").classList.toggle("hidden",!running);
+  $("#ctlDone").classList.toggle("hidden",running||st==="idle");
+  $("#btnNew").classList.toggle("hidden",running||st==="idle");
+}
+function ensureRound(n){
+  if(S.roundEl[n]) return S.roundEl[n];
+  const h=document.createElement("div"); h.className="round-h"; h.textContent=`ラウンド ${n}`;
+  $("#timeline").appendChild(h); S.roundEl[n]=h; return h;
+}
+function turnEl(ev){
+  const a=S.byId[ev.agent], i=S.agents.indexOf(a), [bg,fg]=colorOf(Math.max(i,0));
+  const el=document.createElement("div"); el.className="turn";
+  el.innerHTML=`<div class="turn-h"><span class="av" style="width:22px;height:22px;font-size:10px;background:${bg};color:${fg}">${esc((a?.name||"?").slice(0,2))}</span>
+   <span class="who">${esc(a?.name||ev.agent)}</span><span class="ph">${ev.phase==="build"?"実装":"レビュー"}</span>
+   <span class="spacer"></span><span class="tm muted" style="font-size:12px">作業中…</span><span class="vdx"></span></div><div class="turn-b"></div>`;
+  return el;
+}
+function addDiff(ev){
+  if(!ev.sha){const d=document.createElement("div");d.className="info";d.textContent="（このターンでファイルの変更はありませんでした）";$("#timeline").appendChild(d);return}
+  const d=document.createElement("details"); d.className="diff";
+  const lines=(ev.diff||"").split("\n").map(l=>{const c=l.startsWith("+")&&!l.startsWith("+++")?"a":l.startsWith("-")&&!l.startsWith("---")?"d":l.startsWith("@@")?"h":"";return c?`<span class="${c}">${esc(l)||" "}</span>`:esc(l)+"\n"}).join("");
+  const files=(ev.stat||"").trim().split("\n").pop();
+  d.innerHTML=`<summary>差分 <code>${esc((ev.sha||"").slice(0,7))}</code> — ${esc(files)}</summary><pre>${esc(ev.stat)}\n${lines}</pre>`;
+  $("#timeline").appendChild(d);
+}
+function nearBottom(){return window.innerHeight+window.scrollY>=document.body.scrollHeight-200}
+function handle(ev){
+  const stick=nearBottom();
+  switch(ev.type){
+    case "session":
+      resetState(); S.agents=ev.agents; S.agents.forEach(a=>S.byId[a.id]=a); S.max=ev.max_rounds;
+      $("#hProj").textContent=ev.project; $("#setup").classList.add("hidden");
+      const g=document.createElement("div"); g.className="card";
+      g.innerHTML=`<p class="sec-title">ゴール</p><div class="goal">${esc(ev.goal)}</div>`; $("#timeline").appendChild(g);
+      renderTeam(); break;
+    case "status":
+      S.status=ev.status; if(ev.round) S.round=ev.round; if(ev.max_rounds) S.max=ev.max_rounds;
+      if(["consensus","stopped","max_rounds","error"].includes(ev.status)){
+        const b=document.createElement("div"); b.className="banner "+ev.status; b.textContent=ev.text||ev.status; $("#timeline").appendChild(b);
+        S.agents.forEach(a=>{a._busy=false;a._state="待機"}); renderTeam();
+      }
+      break;
+    case "round":
+      S.round=ev.round; ensureRound(ev.round);
+      S.agents.forEach(a=>a._verdict=null); renderTeam(); break;
+    case "turn_start":{
+      ensureRound(ev.round);
+      const el=turnEl(ev); S.turns[ev.turn]={el,body:el.querySelector(".turn-b")};
+      if(ev.phase==="review"){
+        let g=S.reviewsEl[ev.round]; if(!g){g=document.createElement("div");g.className="reviews";$("#timeline").appendChild(g);S.reviewsEl[ev.round]=g}
+        g.appendChild(el);
+      } else $("#timeline").appendChild(el);
+      const a=S.byId[ev.agent]; if(a){a._busy=true;a._state=ev.phase==="build"?"実装中":"レビュー中";renderTeam()}
+      break;}
+    case "chunk":{const t=S.turns[ev.turn]; if(t){t.body.append(ev.text); if(t.body.scrollHeight-t.body.scrollTop-t.body.clientHeight<80) t.body.scrollTop=t.body.scrollHeight} break;}
+    case "tool":{const t=S.turns[ev.turn]; if(t){const s=document.createElement("span");s.className="tool";s.textContent=`› ${ev.name} ${ev.detail||""}`;t.body.append(s,"\n")} break;}
+    case "turn_end":{
+      const t=S.turns[ev.turn]; const a=S.byId[ev.agent];
+      if(t){
+        const tm=t.el.querySelector(".tm");
+        if(ev.error){tm.textContent="エラー"; const e=document.createElement("div"); e.style.color="var(--bad)"; e.textContent=ev.error; t.body.append(e)}
+        else if(ev.stopped){tm.textContent="停止"}
+        else{
+          tm.textContent=(ev.secs?ev.secs+"秒":"")+(ev.meta?.cost_usd?` · $${(+ev.meta.cost_usd).toFixed(3)}`:"");
+          if(!t.body.textContent.trim() && ev.text) t.body.append(ev.text);
+          else if(ev.text && !t.body.textContent.includes(ev.text.slice(-60))){const f=document.createElement("div");f.style.borderTop="1px solid var(--border)";f.style.marginTop="6px";f.style.paddingTop="6px";f.textContent=ev.text;t.body.append(f)}
+        }
+        if(ev.phase==="review"){const v=ev.error?"ERROR":(ev.verdict||"UNKNOWN"); t.el.querySelector(".vdx").innerHTML=`<span class="vd ${v}">${v}</span>`}
+      }
+      if(a){a._busy=false;a._state=ev.phase==="build"?"実装を終えました":"レビュー済み"; if(ev.phase==="review") a._verdict=ev.error?"ERROR":(ev.verdict||"UNKNOWN"); renderTeam()}
+      if(ev.phase==="review"){S.verdicts[S.round]=S.verdicts[S.round]||{}; S.verdicts[S.round][ev.agent]=ev.error?"ERROR":(ev.verdict||"UNKNOWN")}
+      break;}
+    case "commit": addDiff(ev); break;
+    case "tally":{const d=document.createElement("div");d.className="info";d.textContent=`判定: ${ev.approved} / ${ev.total} 人が APPROVE`;$("#timeline").appendChild(d);break;}
+    case "note":{const d=document.createElement("div");d.className="note";d.textContent="人間からのメモ: "+ev.text;$("#timeline").appendChild(d);break;}
+    case "info":{const d=document.createElement("div");d.className="info";d.textContent=ev.text;$("#timeline").appendChild(d);break;}
+    case "error":{const d=document.createElement("div");d.className="banner error";d.textContent=ev.text;$("#timeline").appendChild(d);break;}
+  }
+  renderHeader();
+  if(stick) window.scrollTo(0,document.body.scrollHeight);
+}
+
+function connect(){
+  const es=new EventSource("/api/events");
+  es.addEventListener("hello",e=>{const d=JSON.parse(e.data); if(!d.session && !S.agents.length) showSetup()});
+  es.addEventListener("reset",()=>{es.close(); resetState(); connect()});
+  es.onmessage=e=>handle(JSON.parse(e.data));
+}
+
+/* ---------- 更新・終了 ---------- */
+function renderUpdate(info){
+  $("#hVer").textContent="v"+info.version+(info.update?.enabled?" · 自動更新オン":"");
+  const u=info.update||{}, bar=$("#updBar");
+  if(u.applying){bar.classList.remove("hidden");$("#updText").textContent="更新を適用しています。まもなく自動で再読み込みします…";$("#btnUpd").classList.add("hidden");return}
+  if(u.available){bar.classList.remove("hidden");$("#btnUpd").classList.remove("hidden");
+    $("#updText").textContent=`新しいバージョン v${u.available} があります。AIの作業が終わったら自動で更新します。${u.notes?"（"+u.notes+"）":""}`;}
+  else if(u.error){bar.classList.remove("hidden");$("#btnUpd").classList.add("hidden");$("#updText").textContent="更新の確認に失敗しました: "+u.error}
+  else bar.classList.add("hidden");
+}
+$("#btnUpd").onclick=async()=>{try{const r=await post("/api/update_now");if(!r.updated)alert("最新です (v"+r.version+")")}catch(e){alert(e.message)}};
+$("#btnQuit").onclick=async()=>{
+  if(S && S.status==="running" && !confirm("AIが作業中です。止めて終了しますか？")) return;
+  try{await post("/api/shutdown")}catch(e){}
+  document.body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2)">FixPoint を終了しました。スタートメニューの「FixPoint」からまた起動できます。</div>';
+};
+// サーバーが更新で再起動したら、新しい画面を読み込み直す
+setInterval(async()=>{
+  try{const i=await (await fetch("/api/info",{cache:"no-store"})).json();
+    if(INFO && i.version!==INFO.version){location.reload();return}
+    renderUpdate(i);}catch(e){}
+},5000);
+
+(async()=>{
+  INFO=await (await fetch("/api/info")).json();
+  renderUpdate(INFO);
+  $("#hProj").textContent=INFO.project;
+  $("#cliList").innerHTML=Object.entries(INFO.clis).filter(([k])=>k!=="mock").map(([k,v])=>`<div class="cli"><span>${esc(v.label)}</span>${v.installed?`<span class="ok" title="${esc(v.version)}">使用可</span>`:`<span class="ng" title="${esc(v.login)}">未インストール</span>`}</div>${v.installed?"":`<div class="hint" style="margin:0 0 4px">${esc(v.login)}</div>`}`).join("");
+  resetState(); renderHeader(); connect();
+})();
+</script>
+</body>
+</html>
