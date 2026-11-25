@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FixPoint</title>
+<link rel="icon" href="/favicon.ico">
 <style>
 :root{
   --bg:#faf9f6;--panel:#f3f2ee;--surface:#ffffff;--surface2:#efede7;--text:#1f1e1b;--text2:#5f5e5a;--muted:#8a8984;
@@ -677,6 +678,7 @@ $("#btnUpd").onclick=async()=>{try{const r=await post("/api/update_now");if(!r.u
 $("#btnQuit").onclick=async()=>{
   if(mode()==="running" && !confirm("AIが作業中です。止めて終了しますか？")) return;
   try{await post("/api/shutdown")}catch(e){}
+  window.close();  // 専用ウィンドウならそのまま閉じる (ふつうのタブでは閉じられないので下の表示が残る)
   document.body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2)">FixPoint を終了しました。スタートメニューの「FixPoint」からまた起動できます。</div>';
 };
 setInterval(async()=>{

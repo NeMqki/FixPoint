@@ -38,6 +38,7 @@ DEFAULT_CONFIG = {
     "check_interval_hours": 6,
     "port": 8765,
     "last_project": "",
+    "app_window": True,  # false にすると、専用ウィンドウではなくいつものブラウザで開く
 }
 
 

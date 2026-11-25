@@ -783,6 +783,8 @@ class App:
         self.lock = threading.Lock()
         self.server = None
         self.update = {"available": None, "notes": "", "checked_at": None, "error": None, "applying": False}
+        self.clients = 0          # 画面 (SSE) をつないでいる数
+        self.idle_exit = False    # 専用ウィンドウで起動したとき: 画面が閉じられたら終了する
 
     def busy(self) -> bool:
         s = self.session
@@ -833,9 +835,25 @@ class App:
         self.restart()
         return True
 
+    def idle_watch(self, grace: float = 60, after: float = 20):
+        """画面がひとつも開いていない状態が続いたら終了する。AI が作業中なら終わるまで待つ。"""
+        start, idle_since = time.time(), None
+        while True:
+            time.sleep(2)
+            if self.clients > 0 or self.busy() or self.update.get("applying") or time.time() - start < grace:
+                idle_since = None
+                continue
+            idle_since = idle_since or time.time()
+            if time.time() - idle_since >= after:
+                print("[終了] ウィンドウが閉じられたので終了します")
+                self.exit_soon(0)
+                return
+
     def restart(self):
         args = [sys.executable, str(HERE / "launcher.py"), "--no-browser", "--no-update", "--restarted",
                 "--project", self.project, "--port", str(self.port)]
+        if self.idle_exit:
+            args.append("--idle-exit")
         kw = {"close_fds": True}
         if os.name == "nt":
             kw["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -873,10 +891,44 @@ _PLOCK = threading.Lock()
 SESSION_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
 
 
-def projects_file() -> Path:
+def data_dir() -> Path:
     # インストール版はインストール先、開発中はホームの .fixpoint に置く
-    d = HERE if (HERE / "app.json").exists() else Path.home() / ".fixpoint"
-    return d / "projects.json"
+    return HERE if (HERE / "app.json").exists() else Path.home() / ".fixpoint"
+
+
+def projects_file() -> Path:
+    return data_dir() / "projects.json"
+
+
+def _window_browser() -> str | None:
+    """専用ウィンドウに使うブラウザ (Edge → Chrome)。Windows 10/11 には Edge が入っている"""
+    if os.name != "nt":
+        return None
+    roots = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
+    for rel in (r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe"):
+        for root in roots:
+            if root and os.path.isabs(root) and os.path.isfile(os.path.join(root, rel)):
+                return os.path.join(root, rel)
+    return None
+
+
+def open_window(url: str) -> bool:
+    """FixPoint 専用のウィンドウで開く (アドレスバーやタブのないアプリ用の表示)。
+    いつものブラウザとは別のプロファイルを使うので、ふだんのタブや拡張機能とは混ざらない。
+    専用ウィンドウにできなければ、いつものブラウザで開いて False を返す。"""
+    exe = _window_browser()
+    if exe:
+        prof = data_dir() / "window"
+        try:
+            prof.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen([exe, f"--app={url}", f"--user-data-dir={prof}", "--window-size=1400,900",
+                              "--no-first-run", "--no-default-browser-check", "--disable-sync"],
+                             close_fds=True, **NOWIN)
+            return True
+        except OSError:
+            pass
+    webbrowser.open(url)
+    return False
 
 
 def projects_load() -> list[str]:
@@ -1026,6 +1078,12 @@ class Server(ThreadingHTTPServer):
     # Windows の SO_REUSEADDR は同じポートの二重バインドを許してしまうので使わない
     allow_reuse_address = os.name != "nt"
 
+    def handle_error(self, request, client_address):
+        # ウィンドウを閉じたときなどの切断はふつうのことなので、ログに出さない
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
     def server_bind(self):
         import socket
         if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -1077,6 +1135,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return
         u = urlparse(self.path)
+        if u.path == "/favicon.ico":
+            # ウィンドウとタスクバーのアイコン (インストール版はインストール先、開発中は installer/)
+            ico = next((p for p in (HERE / "fixpoint.ico", HERE / "installer" / "fixpoint.ico") if p.is_file()), None)
+            if not ico:
+                return self._json({"error": "not found"}, 404)
+            b = ico.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/x-icon")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+            return
         if u.path == "/":
             b = (HERE / "fixpoint_ui.html").read_bytes()
             self.send_response(200)
@@ -1119,10 +1189,12 @@ class Handler(BaseHTTPRequestHandler):
             pos = int(self.headers.get("Last-Event-ID", "-1")) + 1
         except ValueError:
             pos = 0
-        self.wfile.write(f"event: hello\ndata: {json.dumps({'session': sid})}\n\n".encode())
-        self.wfile.flush()
         last_ping = time.time()
+        with APP.lock:
+            APP.clients += 1
         try:
+            self.wfile.write(f"event: hello\ndata: {json.dumps({'session': sid})}\n\n".encode())
+            self.wfile.flush()
             while True:
                 s = APP.session
                 if s is None or s.id != sid:
@@ -1131,6 +1203,10 @@ class Handler(BaseHTTPRequestHandler):
                         self.wfile.flush()
                         return
                     time.sleep(1)
+                    if time.time() - last_ping > 10:  # 画面が閉じられたことに気づけるように
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        last_ping = time.time()
                     continue
                 with s.cond:
                     if pos >= len(s.events):
@@ -1141,12 +1217,15 @@ class Handler(BaseHTTPRequestHandler):
                     pos = ev["seq"] + 1
                 if batch:
                     self.wfile.flush()
-                if time.time() - last_ping > 15:
+                if time.time() - last_ping > 10:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
                     last_ping = time.time()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             return
+        finally:
+            with APP.lock:
+                APP.clients -= 1
 
     def do_POST(self):
         if not self._guard():
@@ -1254,6 +1333,8 @@ def main():
     ap.add_argument("--project", default=os.getcwd(), help="作業するプロジェクトのフォルダ")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8765))
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--window", action="store_true", help="専用のウィンドウで開き、閉じたら終了する")
+    ap.add_argument("--idle-exit", action="store_true", help=argparse.SUPPRESS)  # 画面が閉じられたら終了 (更新後の再起動用)
     args = ap.parse_args()
     for s in (sys.stdout, sys.stderr):
         try:
@@ -1276,8 +1357,13 @@ def main():
     print(f"fixpoint {app_version()}  →  {url}   (プロジェクト: {APP.project})")
     for k, v in APP.clis.items():
         print(f"  {v['label']:<16} {'OK ' + v['version'] if v['installed'] else '未インストール'}")
-    if not args.no_browser:
+    if args.window and not args.no_browser:
+        threading.Timer(0.3, lambda: open_window(url)).start()
+    elif not args.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    if args.window or args.idle_exit:
+        APP.idle_exit = True
+        threading.Thread(target=APP.idle_watch, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

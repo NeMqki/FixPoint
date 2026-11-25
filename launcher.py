@@ -47,9 +47,12 @@ def main():
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--no-update", action="store_true")
     ap.add_argument("--restarted", action="store_true", help=argparse.SUPPRESS)  # 更新後の自動再起動
+    ap.add_argument("--idle-exit", action="store_true", help=argparse.SUPPRESS)  # 専用ウィンドウで起動していた
+    ap.add_argument("--browser", action="store_true", help="専用のウィンドウではなく、いつものブラウザで開く")
     ap.add_argument("command", nargs="?", choices=["update", "rollback", "version"], help="update=今すぐ更新 / rollback=1つ前に戻す / version")
     a = ap.parse_args()
     port = a.port or int(cfg.get("port") or 8765)
+    window = cfg.get("app_window", True) and not a.browser
 
     if a.command == "version":
         print(f"fixpoint {updater.local_version()}  (更新元: {cfg.get('update_source') or '未設定'})")
@@ -65,7 +68,11 @@ def main():
     if not a.restarted and running_on(port):
         print(f"FixPoint はすでに起動しています → http://127.0.0.1:{port}")
         if not a.no_browser:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            if window:
+                import fixpoint
+                fixpoint.open_window(f"http://127.0.0.1:{port}")
+            else:
+                webbrowser.open(f"http://127.0.0.1:{port}")
         return
 
     if not a.no_update:
@@ -78,6 +85,10 @@ def main():
     argv = ["fixpoint", "--project", project, "--port", str(port)]
     if a.no_browser:
         argv.append("--no-browser")
+    if window and not a.no_browser:
+        argv.append("--window")
+    if a.idle_exit:
+        argv.append("--idle-exit")
     sys.argv = argv
     import fixpoint  # 更新後のコードを読み込む
     fixpoint.main()
