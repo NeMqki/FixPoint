@@ -16,6 +16,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+# fixpoint を読み込む前から、カレントディレクトリを実行ファイル検索に含めない
+if os.name == "nt":
+    os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
 
 
 def _setup_log():

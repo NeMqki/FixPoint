@@ -12,6 +12,7 @@ manifest.json:
 安全のため:
   - すべてのファイルを SHA-256 で検証してから置き換える (1つでも合わなければ何も変えない)
   - manifest のパスはインストール先の中の相対パスだけ許可
+  - 8.3 短縮名でも config.json / app.json / .backup / .update-staging は上書きしない
   - 置き換え前のファイルは .backup/<旧バージョン>/ に保存 (rollback() で戻せる)
 """
 from __future__ import annotations
@@ -19,13 +20,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
 
 APP_JSON = "app.json"
 CONFIG_JSON = "config.json"
+# 更新で書いてはいけない名前。先頭要素がこのディレクトリ、またはファイル名がこのファイル。
+_RESERVED_DIRS = (".backup", ".update-staging")
+_RESERVED_FILES = (CONFIG_JSON, APP_JSON)
 DEFAULT_CONFIG = {
     "update_source": "",
     "auto_update": True,
@@ -74,22 +80,81 @@ def vtuple(v: str) -> tuple:
     return tuple(out + [0] * (3 - len(out)))
 
 
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+VERSION_RE = re.compile(r"^v?[0-9]+(\.[0-9]+){0,3}([-+][0-9A-Za-z.]{1,20})?$")
+
+
+def _check_version(v) -> str:
+    # バージョンは .backup/<バージョン>/ のフォルダ名にもなるので、パスとして危険な文字を許さない
+    if not isinstance(v, str) or not VERSION_RE.match(v) or ".." in v:
+        raise ValueError(f"不正なバージョン: {v!r}")
+    return v
+
+
 def _fetch(source: str, rel: str, timeout: float = 20) -> bytes:
     if source.startswith(("http://", "https://")):
+        host = (urllib.parse.urlsplit(source).hostname or "").lower()
+        if source.startswith("http://") and host not in _LOCAL_HOSTS:
+            # 暗号化されていない更新元は途中で書き換えられる (manifest ごと差し替えればチェックサムも通ってしまう)
+            raise ValueError("更新元は https:// にしてください (http:// はこのPC内のサーバーだけ使えます)")
         url = source.rstrip("/") + "/" + rel
         req = urllib.request.Request(url, headers={"User-Agent": "fixpoint-updater", "Cache-Control": "no-cache"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
+            if source.startswith("https://") and not r.geturl().startswith("https://"):
+                raise ValueError(f"https から http へのリダイレクトは受け付けません: {r.geturl()}")
             return r.read()
     return (Path(source) / rel).read_bytes()
 
 
+def _win_file_key(name: str) -> str:
+    # CreateFile は末尾の '.' と空白を捨てる。config.json. も config.json も同じファイルになる。
+    return name.rstrip(". ").lower()
+
+
 def _safe_rel(p: str) -> str:
+    if not isinstance(p, str):
+        raise ValueError(f"不正なパス: {p!r}")
     pp = PurePosixPath(p.replace("\\", "/"))
-    if pp.is_absolute() or ".." in pp.parts or not pp.parts or ":" in pp.parts[0]:
+    # ":" はドライブ名 (C:) と NTFS の代替データストリーム (a.py:x) の両方を防ぐため、どの部分にも許さない
+    if pp.is_absolute() or ".." in pp.parts or not pp.parts or any(":" in x for x in pp.parts):
         raise ValueError(f"不正なパス: {p}")
-    if pp.parts[0] in (".backup", ".update-staging") or pp.name in (CONFIG_JSON,):
+    # Windows は大文字小文字を区別しないので小文字で比べる
+    if _win_file_key(pp.parts[0]) in _RESERVED_DIRS or _win_file_key(pp.name) in _RESERVED_FILES:
         raise ValueError(f"更新対象にできないパス: {p}")
     return str(pp)
+
+
+def _same_existing(a: Path, b: Path) -> bool:
+    """両方あるときだけ同一ファイルか比べる。無いファイルは別物として扱う。"""
+    try:
+        return a.exists() and b.exists() and os.path.samefile(a, b)
+    except OSError as e:
+        raise ValueError(f"更新対象のパスを確認できません: {a}") from e
+
+
+def _reject_reserved_alias(d: Path, rel: str) -> None:
+    """8.3 短縮名は末尾の '.' を落とした名前比較をすり抜ける。
+
+    CONFIG~1.JSO のように、番号は固定ではない。GetLongPathName は末尾の '.' を
+    残すので使わず、各要素の末尾の '.' と空白を落としたパスで既存ファイルと比べる。
+    まだ無いファイルで、祖先も予約ディレクトリでなければ、これまでどおり置く。
+    """
+    parts = []
+    for part in PurePosixPath(rel).parts:
+        name = part.rstrip(". ")
+        if not name or name in (".", ".."):
+            raise ValueError(f"更新対象にできないパス: {rel}")
+        parts.append(name)
+    reserved = [d / name for name in (_RESERVED_DIRS + _RESERVED_FILES)]
+    cur = d
+    for name in parts:
+        cur = cur / name
+        for target in reserved:
+            if _same_existing(cur, target):
+                raise ValueError(f"更新対象にできないパス: {rel}")
+        # ここがまだ無いなら、その先も予約ファイルにはなっていない
+        if not cur.exists():
+            return
 
 
 def check(source: str | None = None, d: Path | None = None, timeout: float = 20) -> dict | None:
@@ -99,6 +164,9 @@ def check(source: str | None = None, d: Path | None = None, timeout: float = 20)
     if not source:
         return None
     m = json.loads(_fetch(source, "manifest.json", timeout).decode("utf-8"))
+    if not isinstance(m, dict) or not isinstance(m.get("files"), list):
+        raise ValueError("manifest.json の形式が正しくありません")
+    _check_version(m.get("version"))
     if vtuple(m["version"]) > vtuple(local_version(d)):
         return m
     return None
@@ -108,17 +176,28 @@ def apply(manifest: dict, source: str | None = None, d: Path | None = None, time
     """manifest のファイルをダウンロード・検証して置き換える。新しいバージョン文字列を返す。"""
     d = d or app_dir()
     source = source if source is not None else load_config(d).get("update_source")
+    _check_version(manifest.get("version"))
     stage = d / ".update-staging"
     if stage.exists():
         shutil.rmtree(stage)
     stage.mkdir()
     try:
         files = []
+        seen = set()
         for f in manifest["files"]:
             rel = _safe_rel(f["path"])
-            data = _fetch(source, f.get("asset") or ("files/" + rel), timeout)
+            # 短縮名の衝突はインストール先に実ファイルがあるときだけ分かる。置く前に見る。
+            _reject_reserved_alias(d, rel)
+            if rel.lower() in seen:
+                raise ValueError(f"manifest に同じパスが2回あります: {rel}")
+            seen.add(rel.lower())
+            asset = _safe_rel(f["asset"]) if f.get("asset") else "files/" + rel  # asset も更新元の中だけ
+            sha = str(f.get("sha256") or "").lower()
+            if not re.fullmatch(r"[0-9a-f]{64}", sha):
+                raise ValueError(f"チェックサムがありません: {rel}")
+            data = _fetch(source, asset, timeout)
             h = hashlib.sha256(data).hexdigest()
-            if h != f["sha256"].lower():
+            if h != sha:
                 raise ValueError(f"チェックサム不一致: {rel}（ダウンロードが壊れているか、改ざんされています）")
             dst = stage / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -126,8 +205,26 @@ def apply(manifest: dict, source: str | None = None, d: Path | None = None, time
             files.append(rel)
         # ここまで全部検証できたら置き換える
         old = local_version(d)
-        backup = d / ".backup" / old
+        try:
+            _check_version(old)
+        except ValueError:
+            old = "0.0.0"
+        backup_root = d / ".backup"
+        backup = backup_root / old
+        # 短縮名はディレクトリができたあとでないと samefile で見えない。
+        # ここで拒否したら、今作った空のバックアップだけ戻す。置き換えは始めない。
+        new_backup_root = not backup_root.exists()
+        new_version_dir = not backup.exists()
         backup.mkdir(parents=True, exist_ok=True)
+        try:
+            for rel in files:
+                _reject_reserved_alias(d, rel)
+        except ValueError:
+            if new_backup_root:
+                shutil.rmtree(backup_root, ignore_errors=True)
+            elif new_version_dir:
+                shutil.rmtree(backup, ignore_errors=True)
+            raise
         for rel in files:
             target = d / rel
             if target.exists():

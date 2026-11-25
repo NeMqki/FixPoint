@@ -301,6 +301,9 @@ const COLORS = [["#e6f1fb","#0c447c"],["#eeedfe","#3c3489"],["#e1f5ee","#085041"
 const DARK = matchMedia("(prefers-color-scheme: dark)").matches;
 const colorOf = i => { const c = COLORS[i % COLORS.length]; return DARK ? [c[1], c[0]] : c; };
 const VLABEL = {APPROVE:"OK",CHANGES:"直してほしい",UNKNOWN:"判定なし",ERROR:"エラー"};
+// 履歴の JSONL はプロジェクト側が作れる。HTML に入れるのは数値と、上のキーだけ。
+function asNum(n){return typeof n==="number" && Number.isFinite(n) ? n : 0}
+function asVerdict(v){return Object.prototype.hasOwnProperty.call(VLABEL, v) ? v : ""}
 const STLABEL = {idle:"待機中",running:"作業中",consensus:"完了（全員OK）",stopped:"止めました",max_rounds:"上限で止まりました",error:"エラー"};
 const DONE = ["consensus","stopped","max_rounds","error"];
 let INFO = null, S = null, ES = null;
@@ -540,7 +543,7 @@ function renderAll(){
 function renderMembers(){
   if(!S.agents.length) return;
   $("#memberLive").innerHTML=S.agents.map(a=>{
-    const v=a._verdict;
+    const v=asVerdict(a._verdict);
     return `<div class="mem">${avatar(a)}
       <div style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span class="nm">${esc(a.name)}</span>${v?`<span class="vd ${v}">${VLABEL[v]}</span>`:""}</div>
       <div class="sub">${esc(INFO.clis[a.kind]?.label||a.kind)}${a.model?" · "+esc(a.model):""}${a.effort?" · エフォート "+esc(EFF[a.effort]||a.effort):""}</div>
@@ -551,13 +554,14 @@ function tok(u){let i=0,o=0;if(u&&typeof u==="object")for(const[k,v]of Object.en
 function renderUsage(){
   const el=$("#usage");
   if(!S.agents.length){el.innerHTML=`<div class="muted" style="font-size:13px">まだ何も動かしていません。</div>`;return}
-  const v=S.verdicts[S.round]||{}, pct=S.max?Math.min(100,S.round/S.max*100):0;
+  const rnd=asNum(S.round), mx=asNum(S.max);
+  const v=S.verdicts[S.round]||{}, pct=mx?Math.min(100,rnd/mx*100):0;
   let secs=0,cost=0,tin=0,tout=0,turns=0;
   const rows=S.agents.map(a=>{const u=S.usage[a.id]||{turns:0,secs:0,cost:0,tin:0,tout:0};secs+=u.secs;cost+=u.cost;tin+=u.tin;tout+=u.tout;turns+=u.turns;
     return `<tr><td>${esc(a.name)}</td><td>${u.turns}</td><td>${fmtSec(u.secs)}</td><td>${u.tin+u.tout?fmtTok(u.tin+u.tout):"—"}</td></tr>`}).join("");
-  el.innerHTML=`<div class="stat"><span>ラウンド</span><b>${S.round} / ${S.max}</b></div>
+  el.innerHTML=`<div class="stat"><span>ラウンド</span><b>${rnd} / ${mx}</b></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
-    <div class="stat"><span>このラウンドの判定</span><span class="meter">${S.agents.map(a=>`<span class="${v[a.id]||""}" title="${esc(a.name)}: ${VLABEL[v[a.id]]||"まだ"}"></span>`).join("")}</span></div>
+    <div class="stat"><span>このラウンドの判定</span><span class="meter">${S.agents.map(a=>{const mark=asVerdict(v[a.id]);return `<span class="${mark}" title="${esc(a.name)}: ${VLABEL[mark]||"まだ"}"></span>`}).join("")}</span></div>
     <div class="stat"><span>作業時間</span><b>${fmtSec(secs)}</b></div>
     <div class="stat"><span>トークン（入力 / 出力）</span><b>${tin+tout?fmtTok(tin)+" / "+fmtTok(tout):"—"}</b></div>
     ${cost?`<div class="stat"><span>料金の目安</span><b>$${cost.toFixed(3)}</b></div>`:""}
@@ -594,10 +598,10 @@ function handle(ev,replay){
   const stick=!replay && nearBottom();
   switch(ev.type){
     case "session":
-      resetState(); S.id=ev.id; S.agents=ev.agents; if(!replay) refreshProjectsSoon(); S.agents.forEach(a=>S.byId[a.id]=a); S.max=ev.max_rounds; S.project=ev.project;
+      resetState(); S.id=ev.id; S.agents=ev.agents; if(!replay) refreshProjectsSoon(); S.agents.forEach(a=>S.byId[a.id]=a); S.max=asNum(ev.max_rounds); S.project=ev.project;
       userMsg(ev.goal); break;
     case "status":
-      S.status=ev.status; if(ev.round) S.round=ev.round; if(ev.max_rounds) S.max=ev.max_rounds;
+      S.status=ev.status; if(ev.round) S.round=asNum(ev.round); if(ev.max_rounds) S.max=asNum(ev.max_rounds);
       if(!replay) refreshProjectsSoon();
       if(DONE.includes(ev.status)){
         add(div("endcard "+ev.status)).textContent=(ev.status==="consensus"?"✓ ":"")+(ev.text||ev.status);
@@ -605,7 +609,7 @@ function handle(ev,replay){
       }
       break;
     case "round":
-      S.round=ev.round; add(div("divider")).textContent=`ラウンド ${ev.round}`;
+      S.round=asNum(ev.round); add(div("divider")).textContent=`ラウンド ${S.round}`;
       S.agents.forEach(a=>a._verdict=null); break;
     case "turn_start":{
       const el=turnEl(ev); S.turns[ev.turn]={el,body:el.querySelector(".mt")};
@@ -619,7 +623,8 @@ function handle(ev,replay){
     case "tool":{const t=S.turns[ev.turn]; if(t){const s=document.createElement("span");s.className="tool";s.textContent=`${ev.name} ${ev.detail||""}`;t.body.append(s,"\n")} break;}
     case "turn_end":{
       const t=S.turns[ev.turn], a=S.byId[ev.agent];
-      const v=ev.phase==="review"?(ev.error?"ERROR":(ev.verdict||"UNKNOWN")):null;
+      let v=ev.phase==="review"?(ev.error?"ERROR":(ev.verdict||"UNKNOWN")):null;
+      if(v) v=asVerdict(v)||"UNKNOWN";
       if(t){
         const tm=t.el.querySelector(".tm"); tm.classList.remove("dots");
         if(ev.error){tm.textContent="エラー"; const e=document.createElement("div"); e.style.color="var(--bad)"; e.textContent=ev.error; t.body.append(e)}
@@ -629,7 +634,7 @@ function handle(ev,replay){
           if(!t.body.textContent.trim() && ev.text) t.body.append(ev.text);
           else if(ev.text && !t.body.textContent.includes(ev.text.slice(-60))){const f=document.createElement("div");f.style.marginTop="6px";f.textContent=ev.text;t.body.append(f)}
         }
-        if(v){t.el.querySelector(".vdx").innerHTML=`<span class="vd ${v}">${VLABEL[v]}</span>`; fold(t)}
+        if(v){const vd=asVerdict(v); t.el.querySelector(".vdx").innerHTML=`<span class="vd ${vd}">${VLABEL[vd]||""}</span>`; fold(t)}
       }
       if(a){
         a._busy=false; a._state=ev.phase==="build"?"書き終わりました":"レビュー済み"; if(v) a._verdict=v;

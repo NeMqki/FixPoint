@@ -33,6 +33,10 @@ VERSION = "0.3.0"
 HERE = Path(__file__).resolve().parent
 # コンソールなし (pythonw) で動かしても git 等の黒い窓が出ないように
 NOWIN = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}
+# Windows は実行ファイルを探すとき、PATH の前にカレントディレクトリを見る。
+# プロジェクトに置かれた git.exe や claude.cmd がそこで走るのを止める (値ではなく「あること」で効く)。
+if os.name == "nt":
+    os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
 
 
 def app_version() -> str:
@@ -69,6 +73,47 @@ KINDS = {
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,99}$")
 
 
+def find_exe(name: str) -> str | None:
+    """PATH 上の絶対パスを返す。カレントディレクトリは見ない。無ければ None。
+
+    名前だけに戻して CreateProcess に渡すと、またカレントが検索される。
+    """
+    if not name or os.path.basename(name) != name:
+        return None
+    if os.name != "nt":
+        return shutil.which(name)
+    os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
+    # shutil.which は変数が無いと、渡した PATH の先頭にカレントを足す。ここで自分で探す。
+    pathext = os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD"
+    exts = [ext.rstrip(".") for ext in pathext.split(os.pathsep) if ext]
+    names = [name + ext for ext in exts]
+    if any(name.lower().endswith(ext.lower()) for ext in exts):
+        names.insert(0, name)
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        # 空や "." や相対パスはカレントディレクトリ。"C:" もそのドライブのカレントを指す。
+        if not entry or not os.path.isabs(entry):
+            continue
+        _drive, tail = os.path.splitdrive(entry)
+        if not tail.startswith(("\\", "/")):
+            continue
+        for cand in names:
+            full = os.path.join(entry, cand)
+            try:
+                if os.path.isfile(full):
+                    return os.path.abspath(full)
+            except OSError:
+                continue
+    return None
+
+
+def cli_bin(kind: str) -> str:
+    exe = find_exe(KINDS[kind]["bin"])
+    if not exe:
+        meta = KINDS[kind]
+        raise RuntimeError(f"{meta['label']} が見つかりません。インストールしてください: {meta['login']}")
+    return exe
+
+
 def list_models(kind: str, path: str) -> list:
     """CLI がモデル一覧を出せるなら、それを使う (今は grok だけ)"""
     if kind == "grok":
@@ -90,7 +135,7 @@ def detect_clis() -> dict:
             out[kind] = {"label": meta["label"], "installed": True, "version": "built-in", "login": meta["login"],
                          "models": meta["models"], "efforts": meta["efforts"]}
             continue
-        path = shutil.which(meta["bin"])
+        path = find_exe(meta["bin"])
         ver = ""
         if path:
             try:
@@ -111,6 +156,9 @@ def child_env() -> dict:
         if k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_") or k.startswith("CLAUDE_AGENT_SDK"):
             env.pop(k, None)
     env["PYTHONIOENCODING"] = "utf-8"
+    if os.name == "nt":
+        # CLI が中で git などを起動するときも、プロジェクト内の同名ファイルを拾わない
+        env["NoDefaultCurrentDirectoryInExePath"] = "1"
     return env
 
 
@@ -139,7 +187,11 @@ class AgentRunner:
         if p and p.poll() is None:
             try:
                 if os.name == "nt":
-                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True, **NOWIN)
+                    exe = find_exe("taskkill")
+                    if not exe:
+                        p.kill()
+                        return
+                    subprocess.run([exe, "/F", "/T", "/PID", str(p.pid)], capture_output=True, **NOWIN)
                 else:
                     os.killpg(p.pid, signal.SIGTERM)
             except Exception:
@@ -150,7 +202,7 @@ class AgentRunner:
         k = self.kind
         if k == "claude":
             mode = "bypassPermissions" if self.permission == "bypassPermissions" else "acceptEdits"
-            cmd = [shutil.which("claude") or "claude", "-p", "--output-format", "stream-json", "--verbose",
+            cmd = [cli_bin("claude"), "-p", "--output-format", "stream-json", "--verbose",
                    "--permission-mode", mode if writer else "default"]
             if self.model:
                 cmd += ["--model", self.model]
@@ -166,7 +218,7 @@ class AgentRunner:
                 cmd += ["--disallowedTools", "Edit,Write,MultiEdit,NotebookEdit", "--allowedTools", allowed]
             return cmd
         if k == "codex":
-            cmd = [shutil.which("codex") or "codex", "exec", "--json", "--skip-git-repo-check"]
+            cmd = [cli_bin("codex"), "exec", "--json", "--skip-git-repo-check"]
             cmd += (["--full-auto"] if writer else ["--sandbox", "read-only"])
             if self.permission == "bypassPermissions" and writer:
                 cmd += ["--dangerously-bypass-approvals-and-sandbox"]
@@ -177,7 +229,7 @@ class AgentRunner:
             cmd += ["-"]  # プロンプトは stdin から
             return cmd
         if k == "grok":
-            cmd = [shutil.which("grok") or "grok", "--output-format", "streaming-json", "--no-memory",
+            cmd = [cli_bin("grok"), "--output-format", "streaming-json", "--no-memory",
                    "--no-subagents"]
             edit_tools = "search_replace,write"
             if writer:
@@ -199,7 +251,7 @@ class AgentRunner:
                 cmd += ["--reasoning-effort", self.effort]
             return cmd  # プロンプトは run() で --prompt-file として付ける
         if k == "gemini":
-            cmd = [shutil.which("gemini") or "gemini"]
+            cmd = [cli_bin("gemini")]
             if writer:
                 cmd += ["--yolo"]
             if self.model:
@@ -219,6 +271,7 @@ class AgentRunner:
             prompt_file.write_text(prompt, encoding="utf-8")
             cmd += ["--cwd", cwd, "--prompt-file", str(prompt_file)]
             prompt = ""
+        _check_batch_args(cmd)
         kwargs = {}
         if os.name != "nt":
             kwargs["start_new_session"] = True
@@ -377,6 +430,20 @@ class AgentRunner:
         return {"text": f"- まだ足りない ({name} より)\nVERDICT: CHANGES", "meta": meta}
 
 
+_BATCH_META = set('%&|<>^')
+
+
+def _check_batch_args(cmd: list[str]):
+    """Windows で .cmd/.bat (npm のシムなど) を起動すると、実行ファイルのパスも引数も cmd.exe に解釈される。
+    % & | < > ^ が入っていると別のコマンドとして実行されうるので、その場合は起動しない。"""
+    if os.name != "nt" or not cmd or not str(cmd[0]).lower().endswith((".cmd", ".bat")):
+        return
+    for arg in cmd:
+        if _BATCH_META & set(str(arg)):
+            raise RuntimeError(f"コマンドに使えない文字 (% & | < > ^) が含まれているため起動を中止しました: {arg}\n"
+                               "フォルダ名や実行ファイルのパスからこれらの文字を外してください。")
+
+
 def _tool_detail(inp: dict) -> str:
     for k in ("file_path", "target_file", "path", "command", "pattern", "target_directory", "notebook_path", "url", "description"):
         if inp.get(k):
@@ -396,8 +463,15 @@ def parse_verdict(text: str) -> str:
 # git
 # ---------------------------------------------------------------------------
 
+def git_bin() -> str:
+    exe = find_exe("git")
+    if not exe:
+        raise RuntimeError("git が見つかりません。PATH に git を追加してください。")
+    return exe
+
+
 def git(cwd, *args, check=False) -> str:
-    r = subprocess.run(["git", "-c", "core.quotepath=false", *args], cwd=cwd, capture_output=True,
+    r = subprocess.run([git_bin(), "-c", "core.quotepath=false", *args], cwd=cwd, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", **NOWIN)
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
@@ -405,7 +479,10 @@ def git(cwd, *args, check=False) -> str:
 
 
 def is_git_repo(cwd) -> bool:
-    r = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=cwd, capture_output=True, text=True, **NOWIN)
+    exe = find_exe("git")
+    if not exe:
+        return False
+    r = subprocess.run([exe, "rev-parse", "--is-inside-work-tree"], cwd=cwd, capture_output=True, text=True, **NOWIN)
     return r.returncode == 0 and r.stdout.strip() == "true"
 
 
@@ -416,7 +493,7 @@ def git_checkpoint(cwd, message) -> str | None:
     git(cwd, "add", "-A")
     if not git(cwd, "status", "--porcelain").strip():
         return None
-    r = subprocess.run(["git", *GIT_ID, "commit", "-q", "--no-verify", "-m", message], cwd=cwd,
+    r = subprocess.run([git_bin(), *GIT_ID, "commit", "-q", "--no-verify", "-m", message], cwd=cwd,
                        capture_output=True, text=True, encoding="utf-8", errors="replace", **NOWIN)
     if r.returncode != 0:
         raise RuntimeError("git commit 失敗: " + r.stderr.strip())
@@ -424,13 +501,24 @@ def git_checkpoint(cwd, message) -> str | None:
 
 
 def head(cwd) -> str | None:
-    r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, **NOWIN)
+    exe = find_exe("git")
+    if not exe:
+        return None
+    r = subprocess.run([exe, "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, **NOWIN)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
 # ---------------------------------------------------------------------------
 # セッション (合意ループ)
 # ---------------------------------------------------------------------------
+
+def _int(v, default: int) -> int:
+    """リクエストの数値を安全に読む (数字でなければ既定値)"""
+    try:
+        return int(v) if v else default  # 0 / 空も既定値 (元の `int(v or default)` と同じ)
+    except (TypeError, ValueError):
+        return default
+
 
 def clip(s: str, n: int) -> str:
     s = s or ""
@@ -945,20 +1033,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}") if n else {}
+        if n < 0 or n > 4 * 1024 * 1024:
+            raise ValueError("bad length")
+        body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+        if not isinstance(body, dict):
+            raise ValueError("body must be an object")
+        return body
 
-    def _guard(self) -> bool:
-        # 他サイトからの CSRF 対策: カスタムヘッダー必須 (ブラウザはクロスオリジンでは preflight が必要になり、ここでは許可しない)
-        if self.headers.get("X-Fixpoint") != "1":
-            self._json({"error": "forbidden"}, 403)
-            return False
+    def _host_ok(self) -> bool:
+        # DNS リバインディング対策: Host が 127.0.0.1 / localhost 以外なら何も返さない
         host = (self.headers.get("Host") or "").split(":")[0]
         if host not in ("127.0.0.1", "localhost"):
             self._json({"error": "bad host"}, 403)
             return False
         return True
 
+    def _guard(self) -> bool:
+        # 他サイトからの CSRF 対策: カスタムヘッダー必須 (ブラウザはクロスオリジンでは preflight が必要になり、ここでは許可しない)
+        if self.headers.get("X-Fixpoint") != "1":
+            self._json({"error": "forbidden"}, 403)
+            return False
+        return self._host_ok()
+
     def do_GET(self):
+        # GET も Host を確認する (/api/events や /api/info はプロジェクトの差分やパスを返すため)
+        if not self._host_ok():
+            return
         u = urlparse(self.path)
         if u.path == "/":
             b = (HERE / "fixpoint_ui.html").read_bytes()
@@ -980,8 +1080,6 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/events":
             return self._sse()
         if u.path in ("/api/projects", "/api/history"):
-            if (self.headers.get("Host") or "").split(":")[0] not in ("127.0.0.1", "localhost"):
-                return self._json({"error": "bad host"}, 403)
             if u.path == "/api/projects":
                 return self._json({"projects": projects_list(), "current": APP.project,
                                    "live": APP.session.id if APP.session else None})
@@ -1040,6 +1138,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._body()
         except Exception:
+            self.close_connection = True  # 読み残した本文で次のリクエストが壊れないように
             return self._json({"error": "bad json"}, 400)
         if u.path == "/api/shutdown":
             self._json({"ok": True})
@@ -1089,10 +1188,13 @@ class Handler(BaseHTTPRequestHandler):
                 agents = body.get("agents") or []
                 if not goal:
                     return self._json({"error": "ゴールを入力してください"}, 400)
-                if not agents:
+                if not agents or not isinstance(agents, list) or not all(isinstance(a, dict) for a in agents):
                     return self._json({"error": "エージェントを1人以上追加してください"}, 400)
                 names = set()
                 for i, a in enumerate(agents):
+                    for k in ("name", "model", "effort", "role"):
+                        if a.get(k) is not None and not isinstance(a[k], str):
+                            return self._json({"error": f"{k} は文字列で指定してください"}, 400)
                     if a.get("kind") not in KINDS:
                         return self._json({"error": f"不明な種類: {a.get('kind')}"}, 400)
                     if not APP.clis.get(a["kind"], {}).get("installed"):
@@ -1110,7 +1212,7 @@ class Handler(BaseHTTPRequestHandler):
                 perm = body.get("permission") if body.get("permission") in ("acceptEdits", "editsAndCommands", "bypassPermissions") else "acceptEdits"
                 APP.project = project
                 APP.remember_project(project)
-                APP.session = Session(project, goal, agents, int(body.get("max_rounds") or 6), perm, bool(body.get("use_git", True)))
+                APP.session = Session(project, goal, agents, _int(body.get("max_rounds"), 6), perm, bool(body.get("use_git", True)))
                 APP.session.start()
                 return self._json({"ok": True, "id": APP.session.id})
             if not s:
@@ -1124,7 +1226,7 @@ class Handler(BaseHTTPRequestHandler):
                     s.add_note(t)
                 return self._json({"ok": True})
             if u.path == "/api/continue":
-                ok = s.continue_(int(body.get("rounds") or 3), (body.get("note") or "").strip())
+                ok = s.continue_(_int(body.get("rounds"), 3), (body.get("note") or "").strip())
                 return self._json({"ok": ok} if ok else {"error": "まだ実行中です"}, 200 if ok else 409)
         self._json({"error": "not found"}, 404)
 
