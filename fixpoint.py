@@ -27,7 +27,7 @@ import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 VERSION = "0.3.0"
 HERE = Path(__file__).resolve().parent
@@ -50,20 +50,45 @@ RUNNING_VERSION = app_version()  # このプロセスが読み込んだバージ
 # CLI 検出
 # ---------------------------------------------------------------------------
 
+# models: 選択肢に出すモデル [(値, 表示名)]。空でも「その他」で自由に入力できる
+# efforts: そのCLIが受け付ける思考の深さ (エフォート)
 KINDS = {
-    "claude": {"label": "Claude Code", "bin": "claude", "login": "ターミナルで `claude` を起動して /login"},
-    "codex": {"label": "Codex CLI", "bin": "codex", "login": "`npm i -g @openai/codex` → `codex login`"},
-    "gemini": {"label": "Gemini CLI", "bin": "gemini", "login": "`npm i -g @google/gemini-cli` → `gemini` を起動してログイン"},
-    "grok": {"label": "Grok Build", "bin": "grok", "login": "ターミナルで `grok login`"},
-    "mock": {"label": "Mock (テスト用)", "bin": None, "login": "ログイン不要"},
+    "claude": {"label": "Claude Code", "bin": "claude", "login": "ターミナルで `claude` を起動して /login",
+               "models": [["fable", "Fable"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku"]],
+               "efforts": ["low", "medium", "high", "xhigh", "max"]},
+    "codex": {"label": "Codex CLI", "bin": "codex", "login": "`npm i -g @openai/codex` → `codex login`",
+              "models": [], "efforts": ["minimal", "low", "medium", "high"]},
+    "gemini": {"label": "Gemini CLI", "bin": "gemini", "login": "`npm i -g @google/gemini-cli` → `gemini` を起動してログイン",
+               "models": [], "efforts": []},
+    "grok": {"label": "Grok Build", "bin": "grok", "login": "ターミナルで `grok login`",
+             "models": [["grok-4.7", "grok-4.7"], ["grok-4.7-build-fast", "grok-4.7-build-fast"]],
+             "efforts": ["low", "medium", "high", "xhigh"]},
+    "mock": {"label": "Mock (テスト用)", "bin": None, "login": "ログイン不要",
+             "models": [["mock-1", "mock-1"]], "efforts": ["low", "high"]},
 }
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,99}$")
+
+
+def list_models(kind: str, path: str) -> list:
+    """CLI がモデル一覧を出せるなら、それを使う (今は grok だけ)"""
+    if kind == "grok":
+        try:
+            r = subprocess.run([path, "models"], capture_output=True, text=True, timeout=20,
+                               encoding="utf-8", errors="replace", env=child_env(), **NOWIN)
+            ms = re.findall(r"^\s*[*-]\s+(\S+)(\s+\(default\))?", r.stdout, re.M)
+            if ms:
+                return [[m, m + ("（既定）" if d else "")] for m, d in ms]
+        except Exception:
+            pass
+    return KINDS[kind]["models"]
 
 
 def detect_clis() -> dict:
     out = {}
     for kind, meta in KINDS.items():
         if meta["bin"] is None:
-            out[kind] = {"label": meta["label"], "installed": True, "version": "built-in", "login": meta["login"]}
+            out[kind] = {"label": meta["label"], "installed": True, "version": "built-in", "login": meta["login"],
+                         "models": meta["models"], "efforts": meta["efforts"]}
             continue
         path = shutil.which(meta["bin"])
         ver = ""
@@ -74,7 +99,8 @@ def detect_clis() -> dict:
                 ver = (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr).strip() else ""
             except Exception as e:
                 ver = f"(バージョン取得失敗: {e})"
-        out[kind] = {"label": meta["label"], "installed": bool(path), "path": path, "version": ver, "login": meta["login"]}
+        out[kind] = {"label": meta["label"], "installed": bool(path), "path": path, "version": ver, "login": meta["login"],
+                     "models": list_models(kind, path) if path else meta["models"], "efforts": meta["efforts"]}
     return out
 
 
@@ -99,9 +125,10 @@ class Stopped(Exception):
 class AgentRunner:
     """1回のターン (プロンプト → 応答) を実行する。各CLIの出力をテキスト/ツール呼び出しに変換してコールバック。"""
 
-    def __init__(self, kind: str, model: str = "", permission: str = "acceptEdits"):
+    def __init__(self, kind: str, model: str = "", permission: str = "acceptEdits", effort: str = ""):
         self.kind = kind
         self.model = model.strip()
+        self.effort = effort if effort in KINDS.get(kind, {}).get("efforts", []) else ""
         self.permission = permission
         self.proc: subprocess.Popen | None = None
         self.cancelled = False
@@ -127,6 +154,8 @@ class AgentRunner:
                    "--permission-mode", mode if writer else "default"]
             if self.model:
                 cmd += ["--model", self.model]
+            if self.effort:
+                cmd += ["--effort", self.effort]
             run_cmds = self.permission in ("editsAndCommands", "bypassPermissions")
             if writer and self.permission == "editsAndCommands":
                 cmd += ["--allowedTools", "Bash,PowerShell"]
@@ -143,6 +172,8 @@ class AgentRunner:
                 cmd += ["--dangerously-bypass-approvals-and-sandbox"]
             if self.model:
                 cmd += ["-m", self.model]
+            if self.effort:
+                cmd += ["-c", f'model_reasoning_effort="{self.effort}"']
             cmd += ["-"]  # プロンプトは stdin から
             return cmd
         if k == "grok":
@@ -164,6 +195,8 @@ class AgentRunner:
                     cmd += ["--always-approve", "--disallowed-tools", edit_tools]
             if self.model:
                 cmd += ["-m", self.model]
+            if self.effort:
+                cmd += ["--reasoning-effort", self.effort]
             return cmd  # プロンプトは run() で --prompt-file として付ける
         if k == "gemini":
             cmd = [shutil.which("gemini") or "gemini"]
@@ -267,6 +300,7 @@ class AgentRunner:
             meta["cost_usd"] = ev.get("total_cost_usd")
             meta["duration_ms"] = ev.get("duration_ms")
             meta["session_id"] = ev.get("session_id")
+            meta["usage"] = ev.get("usage")
             if ev.get("is_error"):
                 meta["error"] = ev.get("result") or ev.get("subtype")
             return ev.get("result") or ""
@@ -334,11 +368,13 @@ class AgentRunner:
             with f.open("a", encoding="utf-8") as fh:
                 fh.write(f"- round {rnd}: {name} が追記\n")
             on_tool("Edit", "MOCK_NOTES.md")
-            return {"text": f"MOCK_NOTES.md にラウンド{rnd}の行を追記しました。", "meta": {}}
+            return {"text": f"MOCK_NOTES.md にラウンド{rnd}の行を追記しました。",
+                    "meta": {"usage": {"input_tokens": 1800, "output_tokens": 240}}}
         need = int(os.environ.get("FIXPOINT_MOCK_APPROVE_AT", "2"))
+        meta = {"usage": {"input_tokens": 1200, "output_tokens": 80}}
         if rnd >= need:
-            return {"text": "ゴールは満たしていると思います。\nVERDICT: APPROVE", "meta": {}}
-        return {"text": f"- まだ足りない ({name} より)\nVERDICT: CHANGES", "meta": {}}
+            return {"text": "ゴールは満たしていると思います。\nVERDICT: APPROVE", "meta": meta}
+        return {"text": f"- まだ足りない ({name} より)\nVERDICT: CHANGES", "meta": meta}
 
 
 def _tool_detail(inp: dict) -> str:
@@ -544,7 +580,7 @@ VERDICT: CHANGES
     # ---- ターン実行 ----
     def run_turn(self, a: dict, phase: str, prompt: str) -> dict:
         tid = f"r{self.round}-{phase}-{a['id']}"
-        runner = AgentRunner(a["kind"], a.get("model", ""), self.permission)
+        runner = AgentRunner(a["kind"], a.get("model", ""), self.permission, a.get("effort", ""))
         self.runners[tid] = runner
         self.emit("turn_start", turn=tid, round=self.round, phase=phase, agent=a["id"])
         t0 = time.time()
@@ -729,6 +765,7 @@ class App:
         threading.Thread(target=_bye, daemon=True).start()
 
     def remember_project(self, project: str):
+        projects_add(project)
         try:
             import updater
             if (HERE / "app.json").exists():
@@ -740,6 +777,143 @@ class App:
 
 
 APP: App | None = None
+
+# ---------------------------------------------------------------------------
+# プロジェクト一覧 (左サイドバー) と過去のチャット
+# ---------------------------------------------------------------------------
+_PLOCK = threading.Lock()
+SESSION_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
+
+
+def projects_file() -> Path:
+    # インストール版はインストール先、開発中はホームの .fixpoint に置く
+    d = HERE if (HERE / "app.json").exists() else Path.home() / ".fixpoint"
+    return d / "projects.json"
+
+
+def projects_load() -> list[str]:
+    try:
+        data = json.loads(projects_file().read_text(encoding="utf-8"))
+        return [p for p in data.get("projects", []) if isinstance(p, str)]
+    except Exception:
+        return []
+
+
+def projects_save(lst: list[str]):
+    f = projects_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"projects": lst[:50]}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _norm(p: str) -> str:
+    return str(Path(p).resolve())
+
+
+def projects_add(project: str):
+    """使ったプロジェクトを一覧の先頭に入れる"""
+    try:
+        p = _norm(project)
+        with _PLOCK:
+            lst = [x for x in projects_load() if os.path.normcase(x) != os.path.normcase(p)]
+            projects_save([p] + lst)
+    except Exception:
+        pass
+
+
+def projects_remove(project: str):
+    """一覧から外すだけ (フォルダやログは消さない)"""
+    p = os.path.normcase(_norm(project))
+    with _PLOCK:
+        projects_save([x for x in projects_load() if os.path.normcase(x) != p])
+
+
+def _known_project(project: str) -> str | None:
+    p = os.path.normcase(_norm(project))
+    for x in projects_load() + [APP.project]:
+        if os.path.normcase(_norm(x)) == p:
+            return _norm(x)
+    return None
+
+
+def _session_summary(f: Path) -> dict | None:
+    try:
+        with f.open("rb") as fh:
+            first = json.loads(fh.readline().decode("utf-8"))
+            size = f.stat().st_size
+            fh.seek(max(0, size - 65536))
+            tail = fh.read().decode("utf-8", "replace").splitlines()
+    except Exception:
+        return None
+    if first.get("type") != "session":
+        return None
+    status, rnd, ts = "stopped", 0, None
+    for line in reversed(tail):
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ts is None:
+            ts = ev.get("ts")
+        if ev.get("type") == "status":
+            status, rnd = ev.get("status", status), ev.get("round") or 0
+            break
+    ts = ts or first.get("ts")
+    s = APP.session
+    if s and s.id == first.get("id"):
+        status, rnd = s.status, s.round
+    elif status == "running":
+        status = "stopped"  # 途中で FixPoint が終了した
+    return {"id": first.get("id"), "goal": first.get("goal", ""), "status": status, "round": rnd,
+            "started": first.get("ts"), "updated": ts}
+
+
+def projects_list() -> list[dict]:
+    lst = projects_load()
+    if (not any(os.path.normcase(x) == os.path.normcase(_norm(APP.project)) for x in lst)
+            and (Path(APP.project) / ".fixpoint" / "team").is_dir()):
+        lst = [_norm(APP.project)] + lst
+    out = []
+    for p in lst:
+        d = Path(p) / ".fixpoint" / "team"
+        sessions = []
+        if d.is_dir():
+            for f in sorted(d.glob("*.jsonl"), reverse=True)[:30]:
+                if SESSION_ID_RE.match(f.stem):
+                    sm = _session_summary(f)
+                    if sm:
+                        sessions.append(sm)
+        out.append({"path": p, "name": Path(p).name or p, "exists": Path(p).is_dir(), "sessions": sessions})
+    return out
+
+
+def session_events(project: str, sid: str) -> list[dict] | None:
+    p = _known_project(project)
+    if not p or not SESSION_ID_RE.match(sid or ""):
+        return None
+    f = Path(p) / ".fixpoint" / "team" / f"{sid}.jsonl"
+    if not f.is_file():
+        return None
+    out = []
+    with f.open(encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                pass
+    return out
+
+
+def pick_folder() -> str | None:
+    """このPCのフォルダ選択ダイアログを出す (tkinter が無ければ None)"""
+    code = ("import tkinter as t,tkinter.filedialog as f;r=t.Tk();r.withdraw();r.attributes('-topmost',True);"
+            "p=f.askdirectory(title='FixPoint: プロジェクトのフォルダを選んでください');print(p or '',end='')")
+    try:
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", timeout=600, **NOWIN)
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout.strip() or ""
 
 
 class Server(ThreadingHTTPServer):
@@ -805,6 +979,17 @@ class Handler(BaseHTTPRequestHandler):
                                "session": None if not s else {"id": s.id, "status": s.status, "round": s.round}})
         if u.path == "/api/events":
             return self._sse()
+        if u.path in ("/api/projects", "/api/history"):
+            if (self.headers.get("Host") or "").split(":")[0] not in ("127.0.0.1", "localhost"):
+                return self._json({"error": "bad host"}, 403)
+            if u.path == "/api/projects":
+                return self._json({"projects": projects_list(), "current": APP.project,
+                                   "live": APP.session.id if APP.session else None})
+            q = parse_qs(u.query)
+            evs = session_events((q.get("project") or [""])[0], (q.get("id") or [""])[0])
+            if evs is None:
+                return self._json({"error": "見つかりませんでした"}, 404)
+            return self._json({"events": evs})
         self._json({"error": "not found"}, 404)
 
     def _sse(self):
@@ -877,6 +1062,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "updated": True, "version": m["version"]})
             threading.Thread(target=APP.apply_update_and_restart, args=(m, cfg["update_source"]), daemon=True).start()
             return
+        if u.path == "/api/projects/add":
+            path = (body.get("path") or "").strip()
+            if body.get("pick"):
+                path = pick_folder()
+                if path is None:
+                    return self._json({"error": "フォルダ選択の画面を出せませんでした。パスを直接入力してください"}, 501)
+                if not path:
+                    return self._json({"ok": True, "cancelled": True})
+            if not path or not Path(path).is_dir():
+                return self._json({"error": f"フォルダが見つかりません: {path}"}, 400)
+            projects_add(path)
+            return self._json({"ok": True, "path": _norm(path)})
+        if u.path == "/api/projects/remove":
+            projects_remove(body.get("path") or "")
+            return self._json({"ok": True})
         with APP.lock:
             s = APP.session
             if u.path == "/api/start":
@@ -897,6 +1097,11 @@ class Handler(BaseHTTPRequestHandler):
                         return self._json({"error": f"不明な種類: {a.get('kind')}"}, 400)
                     if not APP.clis.get(a["kind"], {}).get("installed"):
                         return self._json({"error": f"{KINDS[a['kind']]['label']} がインストールされていません"}, 400)
+                    a["model"] = (a.get("model") or "").strip()
+                    if a["model"] and not MODEL_RE.match(a["model"]):
+                        return self._json({"error": f"モデル名に使えない文字があります: {a['model']}"}, 400)
+                    if a.get("effort") and a["effort"] not in KINDS[a["kind"]]["efforts"]:
+                        return self._json({"error": f"{KINDS[a['kind']]['label']} ではエフォート「{a['effort']}」は選べません"}, 400)
                     a["id"] = f"a{i + 1}"
                     a["name"] = (a.get("name") or f"{a['kind']}-{i + 1}").strip()
                     if a["name"] in names:

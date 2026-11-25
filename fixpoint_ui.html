@@ -6,180 +6,292 @@
 <title>FixPoint</title>
 <style>
 :root{
-  --bg:#f7f6f3;--surface:#ffffff;--surface2:#f1efe8;--text:#1f1e1b;--text2:#5f5e5a;--muted:#8a8984;
-  --border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);
+  --bg:#faf9f6;--panel:#f3f2ee;--surface:#ffffff;--surface2:#efede7;--text:#1f1e1b;--text2:#5f5e5a;--muted:#8a8984;
+  --border:rgba(0,0,0,.09);--border2:rgba(0,0,0,.16);
   --accent:#185fa5;--accent-bg:#e6f1fb;--ok:#3b6d11;--ok-bg:#eaf3de;--warn:#854f0b;--warn-bg:#faeeda;
   --bad:#a32d2d;--bad-bg:#fcebeb;--pro:#534ab7;--pro-bg:#eeedfe;
   --add:#1a7f37;--add-bg:#e6ffec;--del:#cf222e;--del-bg:#ffebe9;
   --mono:ui-monospace,SFMono-Regular,Consolas,"Cascadia Mono",monospace;
   --sans:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;
+  --shadow:0 2px 12px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#1a1a19;--surface:#242423;--surface2:#2c2c2a;--text:#ecebe6;--text2:#b4b2a9;--muted:#888780;
-  --border:rgba(255,255,255,.10);--border2:rgba(255,255,255,.2);
+  --bg:#1c1c1b;--panel:#222221;--surface:#2a2a28;--surface2:#33332f;--text:#ecebe6;--text2:#b4b2a9;--muted:#888780;
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.16);
   --accent:#85b7eb;--accent-bg:#0c2d4f;--ok:#97c459;--ok-bg:#1f3a0a;--warn:#ef9f27;--warn-bg:#3d2604;
   --bad:#f09595;--bad-bg:#4a1515;--pro:#afa9ec;--pro-bg:#2a2560;
   --add:#7ee787;--add-bg:#12351c;--del:#ffa198;--del-bg:#4a1a1a;
+  --shadow:0 2px 12px rgba(0,0,0,.3);
 }}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 var(--sans)}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.65 var(--sans)}
 button,input,select,textarea{font:inherit;color:inherit}
-button{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:6px 14px;cursor:pointer}
+button{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:5px 12px;cursor:pointer}
 button:hover{background:var(--surface2)}
-button.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
-button.primary:hover{opacity:.88}
-button.danger{color:var(--bad);border-color:var(--bad)}
-button:disabled{opacity:.5;cursor:default}
-input,select,textarea{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;width:100%}
-textarea{resize:vertical;min-height:64px}
-label{font-size:12px;color:var(--text2);display:block;margin:0 0 4px}
-header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-header h1{font-size:16px;font-weight:600;margin:0}
-.proj{font-family:var(--mono);font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
+button:disabled{opacity:.45;cursor:default}
+button.ghost{border-color:transparent}
+input,select,textarea{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;width:100%}
+label{font-size:12px;color:var(--text2);display:block;margin:0 0 3px}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+.spacer{flex:1}
+
+/* ---------- 全体: 左がプロジェクト、真ん中がチャット、右がパネル ---------- */
+.app{display:grid;grid-template-columns:260px minmax(0,1fr) 320px;height:100vh;height:100dvh}
+
+/* ---------- 左サイドバー ---------- */
+.side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.side-top{padding:12px 12px 6px;display:flex;flex-direction:column;gap:10px}
+.side-brand{font-weight:700;font-size:16px;padding:2px 6px}
+.newchat{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--surface);border-color:var(--border);border-radius:10px;padding:8px 12px;font-weight:500}
+.side-h{display:flex;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.03em}
+.side-h button{margin-left:auto;padding:0 8px;font-size:15px;border-color:transparent;color:var(--text2)}
+.plist{flex:1;overflow-y:auto;padding:0 8px 16px}
+.pj{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px;user-select:none}
+.pj:hover{background:var(--surface2)}
+.pj.sel{font-weight:600}
+.pj .caret{width:12px;color:var(--muted);font-size:10px;transition:transform .15s;flex:none}
+.pj.open .caret{transform:rotate(90deg)}
+.pj .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.pj .cnt{font-size:11px;color:var(--muted)}
+.pj .act{display:none;padding:0 6px;border-color:transparent;color:var(--muted);font-size:13px;line-height:1.4}
+.pj:hover .act{display:inline-block}
+.pj:hover .cnt{display:none}
+.pj.gone .nm{color:var(--muted);text-decoration:line-through}
+.chats{margin:0 0 6px 18px;border-left:1px solid var(--border);padding-left:4px}
+.ch{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2)}
+.ch:hover{background:var(--surface2)}
+.ch.active{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--border)}
+.ch .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch .d{font-size:11px;color:var(--muted);white-space:nowrap}
+.st{width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
+.st.consensus{background:var(--ok)} .st.running{background:var(--accent);animation:blink 1s infinite}
+.st.max_rounds{background:var(--warn)} .st.error{background:var(--bad)}
+.empty-side{font-size:12px;color:var(--muted);padding:6px 12px}
+#btnSide{display:none}
+@media (min-width:1201px){.top #btnNew{display:none!important}}
+@media (max-width:1200px){
+  .app{grid-template-columns:minmax(0,1fr) 320px}
+  .side{position:fixed;top:0;left:0;bottom:0;width:min(280px,85vw);z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:var(--shadow)}
+  .side.open{transform:none}
+  #btnSide{display:inline-block}
+}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);min-height:52px}
+.brand{font-weight:700;font-size:16px;letter-spacing:.01em}
+.proj{font-family:var(--mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .pill{font-size:12px;padding:2px 10px;border-radius:999px;background:var(--surface2);color:var(--text2);white-space:nowrap}
 .pill.running{background:var(--accent-bg);color:var(--accent)}
 .pill.consensus{background:var(--ok-bg);color:var(--ok)}
 .pill.stopped,.pill.max_rounds{background:var(--warn-bg);color:var(--warn)}
 .pill.error{background:var(--bad-bg);color:var(--bad)}
-.spacer{flex:1}
-.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;padding:20px;max-width:1400px;margin:0 auto}
-@media (max-width:860px){.layout{grid-template-columns:1fr;padding:16px}.proj{max-width:80vw}}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
-.side{display:flex;flex-direction:column;gap:14px}
-.sec-title{font-size:12px;color:var(--text2);margin:0 0 8px;font-weight:600;letter-spacing:.02em}
-.agent{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border)}
-.agent:first-of-type{border-top:0}
-.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex:none}
-.agent .nm{font-weight:600}
-.agent .sub{font-size:12px;color:var(--muted)}
-.state{font-size:12px;color:var(--text2)}
-.state.busy::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;animation:pulse 1s infinite}
-@keyframes pulse{50%{opacity:.25}}
+#btnPanel{display:none}
+.top button{white-space:nowrap;flex:none}
+.updbar{background:var(--accent-bg);color:var(--accent);padding:7px 16px;font-size:13px;display:flex;gap:12px;align-items:center}
+
+.scroll{flex:1;overflow-y:auto;min-height:0}
+.thread{max-width:780px;margin:0 auto;padding:24px 20px 40px;display:flex;flex-direction:column;gap:18px}
+
+/* ようこそ */
+.welcome{min-height:58vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
+.welcome h2{font-size:28px;font-weight:600;margin:0}
+.welcome p{color:var(--text2);margin:0;max-width:460px}
+.sugs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+.sugs button{border-radius:999px;font-size:13px;color:var(--text2);background:var(--surface)}
+
+/* メッセージ */
+.msg{display:flex;gap:12px;min-width:0}
+.msg.user{justify-content:flex-end}
+.bubble{background:var(--surface2);border-radius:18px;padding:10px 16px;max-width:80%;white-space:pre-wrap;word-break:break-word}
+.bubble .lbl{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex:none}
+.mb{flex:1;min-width:0}
+.mh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin-bottom:2px}
+.mh b{font-weight:600}
+.tag{font-size:11px;color:var(--muted);border:1px solid var(--border2);border-radius:999px;padding:0 8px}
+.tm{font-size:12px;color:var(--muted)}
+.mt{white-space:pre-wrap;word-break:break-word;font-size:14px}
+.mt.fold{max-height:110px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent)}
+.more{font-size:12px;color:var(--accent);border:0;padding:2px 0;background:none}
+.more:hover{background:none;text-decoration:underline}
+.tool{font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:1px 8px;display:inline-block;margin:2px 0}
+.dots::after{content:"…";animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.2}}
 .vd{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
 .vd.APPROVE{background:var(--ok-bg);color:var(--ok)}
 .vd.CHANGES{background:var(--warn-bg);color:var(--warn)}
 .vd.UNKNOWN,.vd.ERROR{background:var(--bad-bg);color:var(--bad)}
-.cli{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
-.cli .ok{color:var(--ok)} .cli .ng{color:var(--muted)}
-.hint{font-size:12px;color:var(--muted);margin-top:6px}
-.meter{display:flex;gap:4px;align-items:center}
-.meter span{width:22px;height:8px;border-radius:4px;background:var(--surface2)}
-.meter span.APPROVE{background:var(--ok)} .meter span.CHANGES{background:var(--warn)} .meter span.UNKNOWN,.meter span.ERROR{background:var(--bad)}
-.timeline{display:flex;flex-direction:column;gap:14px;min-width:0}
-.round-h{display:flex;align-items:center;gap:10px;margin-top:8px;font-weight:600}
-.round-h::after{content:"";flex:1;height:1px;background:var(--border)}
-.turn{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-width:0}
-.turn-h{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
-.turn-h .who{font-weight:600}
-.turn-h .ph{color:var(--muted)}
-.turn-b{padding:10px 14px;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto;font-size:13px}
-.turn.collapsed .turn-b{max-height:120px}
-.tool{font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:1px 6px;display:inline-block;margin:2px 0}
-.reviews{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
-details.diff{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 14px}
+.reviews{display:flex;flex-direction:column;gap:14px;border-left:2px solid var(--border);padding-left:14px;margin-left:14px}
+.divider{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted);margin-top:6px}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.sys{font-size:12px;color:var(--muted);text-align:center}
+details.diff{margin-left:42px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:6px 12px}
 details.diff summary{cursor:pointer;font-size:13px;color:var(--text2)}
-.diff pre{font-family:var(--mono);font-size:12px;overflow:auto;max-height:480px;margin:8px 0 0}
+.diff pre{font-family:var(--mono);font-size:12px;overflow:auto;max-height:440px;margin:8px 0 2px}
 .diff .a{color:var(--add);background:var(--add-bg);display:block}
 .diff .d{color:var(--del);background:var(--del-bg);display:block}
 .diff .h{color:var(--pro);display:block}
-.banner{border-radius:12px;padding:14px 16px;font-weight:600}
-.banner.consensus{background:var(--ok-bg);color:var(--ok)}
-.banner.stopped,.banner.max_rounds{background:var(--warn-bg);color:var(--warn)}
-.banner.error{background:var(--bad-bg);color:var(--bad)}
-.note{font-size:13px;border-left:3px solid var(--pro);padding:4px 12px;color:var(--text2)}
-.info{font-size:12px;color:var(--muted)}
-.row{display:grid;gap:10px}
-.agent-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 2fr auto;gap:8px;align-items:end;padding:8px 0;border-top:1px solid var(--border)}
-@media (max-width:860px){.agent-row{grid-template-columns:1fr 1fr}}
-.err{color:var(--bad);font-size:13px;min-height:1em}
-.muted{color:var(--muted)}
-.hidden{display:none!important}
-.goal{font-size:13px;white-space:pre-wrap;color:var(--text2)}
+.endcard{border-radius:14px;padding:14px 18px;font-weight:600;text-align:center}
+.endcard.consensus{background:var(--ok-bg);color:var(--ok)}
+.endcard.stopped,.endcard.max_rounds{background:var(--warn-bg);color:var(--warn)}
+.endcard.error{background:var(--bad-bg);color:var(--bad)}
+
+/* 入力欄 */
+.composer-wrap{padding:0 20px 14px}
+.composer{max-width:780px;margin:0 auto;background:var(--surface);border:1px solid var(--border2);border-radius:20px;box-shadow:var(--shadow);padding:10px 12px 8px}
+.composer textarea{border:0;background:transparent;resize:none;padding:4px 6px;min-height:28px;max-height:220px;outline:none}
+.cbar{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.chip{font-size:12px;border-radius:999px;padding:3px 10px;color:var(--text2);border-color:var(--border);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.send{width:34px;height:34px;border-radius:50%;padding:0;background:var(--text);color:var(--bg);border-color:var(--text);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
+.send:hover{background:var(--text);opacity:.85}
+.stop{width:34px;height:34px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center}
+.stop i{width:11px;height:11px;background:var(--text);border-radius:2px;display:block}
+.pop{position:relative}
+.pop>.box{position:absolute;bottom:calc(100% + 8px);left:0;z-index:20;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:var(--shadow);padding:12px;width:320px;display:flex;flex-direction:column;gap:10px}
+.foot{max-width:780px;margin:6px auto 0;font-size:12px;color:var(--muted);text-align:center;min-height:1.2em}
+.foot.err{color:var(--bad)}
+
+/* ---------- 右パネル ---------- */
+.panel{background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sec{padding:16px 16px 6px}
+.sec h3{font-size:12px;font-weight:600;color:var(--text2);margin:0 0 10px;letter-spacing:.03em;display:flex;align-items:center;gap:8px}
+.sec h3 .spacer{flex:1}
+.mem{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
+.mem+.mem{border-top:1px solid var(--border)}
+.mem .nm{font-weight:600;font-size:13px}
+.mem .sub{font-size:12px;color:var(--muted)}
+.state{font-size:12px;color:var(--text2)}
+.state.busy::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;animation:blink 1s infinite}
+.edit{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px;display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:8px}
+.edit input,.edit select{font-size:12px;padding:4px 7px}
+.edit .role{grid-column:1/-1}
+.edit .mini{display:block;font-size:10.5px;color:var(--muted);margin:0 0 1px 2px}
+.edit>div{min-width:0}
+.edit .x{padding:0 8px;border-color:transparent;color:var(--muted)}
+.cli{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0}
+.cli .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.cli .dot.on{background:var(--ok)}
+.cli .v{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.hint{font-size:12px;color:var(--muted);margin:0 0 6px 16px}
+.stat{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+.stat b{font-weight:600}
+.bar{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;margin:4px 0 10px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.meter{display:flex;gap:3px}
+.meter span{width:18px;height:6px;border-radius:3px;background:var(--surface2)}
+.meter span.APPROVE{background:var(--ok)} .meter span.CHANGES{background:var(--warn)} .meter span.UNKNOWN,.meter span.ERROR{background:var(--bad)}
+table.use{width:100%;border-collapse:collapse;font-size:12px}
+table.use th{font-weight:500;color:var(--muted);text-align:right;padding:3px 0}
+table.use th:first-child,table.use td:first-child{text-align:left}
+table.use td{text-align:right;padding:4px 0;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.pfoot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr);overflow:hidden}
+  .top .proj{display:none}
+  .panel{position:fixed;top:0;right:0;bottom:0;width:min(340px,90vw);z-index:30;transform:translateX(100%);transition:transform .2s;box-shadow:var(--shadow)}
+  .panel.open{transform:none}
+  #btnPanel{display:inline-block}
+  .thread{padding:16px 16px 32px}
+  .composer-wrap{padding:0 12px 10px}
+  .welcome h2{font-size:22px}
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>FixPoint</h1><span class="muted" style="font-size:12px">直すところがなくなるまで</span>
-  <span class="proj" id="hProj"></span>
-  <span class="pill" id="hStatus">待機</span>
-  <span class="pill hidden" id="hRound"></span>
-  <span class="meter" id="hMeter" title="現在のラウンドの判定"></span>
-  <span class="spacer"></span>
-  <span class="muted" id="hVer" style="font-size:12px"></span>
-  <button id="btnNew" class="hidden">新しいセッション</button>
-  <button id="btnQuit" title="FixPoint を終了">終了</button>
-</header>
-<div id="updBar" class="hidden" style="background:var(--accent-bg);color:var(--accent);padding:8px 20px;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-  <span id="updText"></span><span class="spacer"></span>
-  <button id="btnUpd" style="font-size:12px;padding:3px 10px">今すぐ更新</button>
-</div>
-
-<div class="layout">
-  <aside class="side">
-    <div class="card" id="teamCard">
-      <p class="sec-title">チーム</p>
-      <div id="teamList"><div class="muted" style="font-size:13px">セッション開始前です</div></div>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="side-top">
+      <div class="side-brand">FixPoint</div>
+      <button class="newchat" id="btnNewSide">＋ 新しいチャット</button>
+    </div>
+    <div class="side-h">プロジェクト<button id="btnAddProj" title="プロジェクトを追加" aria-label="プロジェクトを追加">＋</button></div>
+    <div class="plist" id="plist"></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <button id="btnSide" class="ghost" aria-label="プロジェクト一覧を開く">☰</button>
+      <span class="brand">FixPoint</span>
+      <span class="pill" id="hStatus">待機中</span>
+      <span class="proj" id="hProj"></span>
+      <span class="spacer"></span>
+      <button id="btnNew" class="hidden">＋ 新しいチャット</button>
+      <button id="btnPanel" class="ghost" aria-label="パネルを開く">ⓘ</button>
+    </header>
+    <div id="updBar" class="updbar hidden">
+      <span id="updText"></span><span class="spacer"></span>
+      <button id="btnUpd" style="font-size:12px;padding:2px 10px">今すぐ更新</button>
     </div>
 
-    <div class="card hidden" id="ctlRunning">
-      <p class="sec-title">人間からの介入</p>
-      <textarea id="noteText" placeholder="例: UIは日本語にしてください。テストも必ず書くこと"></textarea>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button id="btnNote" class="primary">メモを送る</button>
-        <span class="spacer"></span>
-        <button id="btnStop" class="danger">停止</button>
-      </div>
-      <div class="hint">メモは次のラウンドに指摘として渡されます。メモがある間は合意で終わりません。</div>
-    </div>
-
-    <div class="card hidden" id="ctlDone">
-      <p class="sec-title">続ける</p>
-      <textarea id="contNote" placeholder="追加の指示（任意）: 例: エラー処理も入れて"></textarea>
-      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-        <label style="margin:0">追加ラウンド</label>
-        <input id="contRounds" type="number" min="1" max="20" value="3" style="width:70px">
-        <span class="spacer"></span>
-        <button id="btnCont" class="primary">再開</button>
+    <div class="scroll" id="scroll">
+      <div class="thread">
+        <div class="welcome hidden" id="welcome">
+          <h2>何をつくりますか？</h2>
+          <p>やってほしいことを書いて送ると、右のメンバーが「これでいいね」と全員うなずくまで作業を続けます。</p>
+          <div class="sugs" id="sugs">
+            <button>README に使い方を書いて</button>
+            <button>テストを追加して、全部通るようにして</button>
+            <button>バグがないか見て、あれば直して</button>
+          </div>
+        </div>
+        <div id="timeline" style="display:flex;flex-direction:column;gap:18px"></div>
       </div>
     </div>
 
-    <div class="card">
-      <p class="sec-title">AI CLI（ログインは各CLIで）</p>
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="やってほしいことを書いてください"></textarea>
+        <div class="cbar">
+          <div class="pop" id="popProj">
+            <button class="chip" id="chipProj" title="プロジェクトのフォルダ">📁 <span id="chipProjText"></span></button>
+            <div class="box hidden">
+              <div><label>プロジェクトのフォルダ</label><input id="fProject" spellcheck="false"></div>
+              <button id="btnPick" style="font-size:12px;align-self:flex-start">フォルダを選ぶ…</button>
+            </div>
+          </div>
+          <div class="pop" id="popSet">
+            <button class="chip" id="chipSet">⚙ <span id="chipSetText"></span></button>
+            <div class="box hidden">
+              <div><label id="lblRounds">最大ラウンド数</label><input id="fRounds" type="number" min="1" max="30" value="6"></div>
+              <div><label>書く担当にどこまで任せるか</label>
+                <select id="fPerm">
+                  <option value="acceptEdits">ファイル編集だけ（いちばん安全）</option>
+                  <option value="editsAndCommands">編集＋コマンド実行（テストを回せる）</option>
+                  <option value="bypassPermissions">すべておまかせ（注意）</option>
+                </select></div>
+              <div><label>git に記録</label>
+                <select id="fGit"><option value="1">毎回コミットする（おすすめ）</option><option value="0">使わない</option></select></div>
+            </div>
+          </div>
+          <span class="spacer"></span>
+          <button class="stop hidden" id="btnStop" title="止める" aria-label="止める"><i></i></button>
+          <button class="send" id="btnSend" title="送信" aria-label="送信">↑</button>
+        </div>
+      </div>
+      <div class="foot" id="foot"></div>
+    </div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <div class="sec">
+      <h3>メンバー<span class="spacer"></span><button id="btnAddAgent" class="ghost" style="font-size:12px;padding:0 6px">＋ 追加</button></h3>
+      <div id="memberEdit"></div>
+      <div id="memberLive" class="hidden"></div>
+    </div>
+    <div class="sec">
+      <h3>利用状況</h3>
+      <div id="usage"></div>
+    </div>
+    <div class="sec">
+      <h3>使えるAI</h3>
       <div id="cliList"></div>
-      <div class="hint">各AIのCLIを、このPCで自分のアカウントにログインした状態で使います。FixPoint は認証情報を扱いません。</div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">それぞれのCLIに、自分のアカウントでログインして使います。FixPoint がパスワードを預かることはありません。</p>
+    </div>
+    <div class="pfoot">
+      <span id="hVer"></span><span class="spacer"></span>
+      <button id="btnQuit" style="font-size:12px;padding:2px 10px">終了</button>
     </div>
   </aside>
-
-  <main>
-    <section class="card hidden" id="setup">
-      <p class="sec-title">新しいセッション</p>
-      <div class="row">
-        <div><label>プロジェクトのフォルダ</label><input id="fProject" spellcheck="false"></div>
-        <div><label>ゴール（全員が「これでいい」と言ったら終わり）</label>
-          <textarea id="fGoal" rows="4" placeholder="例: Discord の読み上げBotに、ユーザーごとに声を変えられる /voice コマンドを追加する。READMEに使い方も書く。"></textarea></div>
-        <div>
-          <label>メンバー（上から順に最初の実装担当）</label>
-          <div id="agentRows"></div>
-          <button id="btnAddAgent" style="margin-top:8px">＋ メンバーを追加</button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-          <div><label>最大ラウンド数</label><input id="fRounds" type="number" min="1" max="30" value="6"></div>
-          <div><label>実装担当の権限</label>
-            <select id="fPerm">
-              <option value="acceptEdits">ファイル編集だけ（いちばん安全）</option>
-              <option value="editsAndCommands">編集＋コマンド実行（テストを回せる）</option>
-              <option value="bypassPermissions">すべて自動許可（注意）</option>
-            </select></div>
-          <div><label>git チェックポイント</label>
-            <select id="fGit"><option value="1">ターンごとにコミット（推奨）</option><option value="0">使わない</option></select></div>
-        </div>
-        <div class="err" id="setupErr"></div>
-        <div><button id="btnStart" class="primary">開始</button></div>
-      </div>
-    </section>
-
-    <section class="timeline" id="timeline"></section>
-  </main>
 </div>
 
 <script>
@@ -188,7 +300,12 @@ const H = {"Content-Type":"application/json","X-Fixpoint":"1"};
 const COLORS = [["#e6f1fb","#0c447c"],["#eeedfe","#3c3489"],["#e1f5ee","#085041"],["#faece7","#712b13"],["#fbeaf0","#72243e"],["#faeeda","#633806"]];
 const DARK = matchMedia("(prefers-color-scheme: dark)").matches;
 const colorOf = i => { const c = COLORS[i % COLORS.length]; return DARK ? [c[1], c[0]] : c; };
-let INFO = null, S = null; // S = セッション状態 (イベントから再構築)
+const VLABEL = {APPROVE:"OK",CHANGES:"直してほしい",UNKNOWN:"判定なし",ERROR:"エラー"};
+const STLABEL = {idle:"待機中",running:"作業中",consensus:"完了（全員OK）",stopped:"止めました",max_rounds:"上限で止まりました",error:"エラー"};
+const DONE = ["consensus","stopped","max_rounds","error"];
+let INFO = null, S = null, ES = null;
+let VIEW = {kind:"live"};            // live: いま動いているチャット / past: 過去のチャット / new: 新しいチャットの準備中
+let PROJ = {projects:[], live:null};
 
 function esc(s){return (s??"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 async function post(url, body){
@@ -199,13 +316,20 @@ async function post(url, body){
 }
 function store(k,v){try{localStorage.setItem("fixpoint."+k,JSON.stringify(v))}catch(e){}}
 function load(k,d){try{const v=localStorage.getItem("fixpoint."+k);return v?JSON.parse(v):d}catch(e){return d}}
+function avatar(a,size){
+  const i=Math.max(S.agents.indexOf(a),0), [bg,fg]=colorOf(i);
+  return `<span class="av" style="background:${bg};color:${fg}${size?`;width:${size}px;height:${size}px`:""}">${esc((a?.name||"?").slice(0,2))}</span>`;
+}
+function mode(){ if(S.past) return "past"; if(!S.agents.length) return "idle"; return DONE.includes(S.status) ? "done" : "running"; }
+function fmtTok(n){return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":String(n)}
+function fmtSec(s){s=Math.round(s);return s>=60?`${Math.floor(s/60)}分${s%60}秒`:`${s}秒`}
 
-/* ---------- セットアップ ---------- */
+/* ---------- メンバーの編集（始める前） ---------- */
 function defaultAgents(){
   const c = INFO?.clis||{}, out=[];
   if(c.claude?.installed){
-    out.push({name:"Claude-A",kind:"claude",model:"opus",role:"実装を主導する。全体設計を考える"});
-    out.push({name:"Claude-B",kind:"claude",model:"sonnet",role:"テストと品質に厳しいレビュアー。動くかを必ず確かめる"});
+    out.push({name:"Claude-A",kind:"claude",model:"opus",effort:"high",role:"実装を主導する。全体設計を考える"});
+    out.push({name:"Claude-B",kind:"claude",model:"sonnet",effort:"",role:"テストと品質に厳しいレビュアー。動くかを必ず確かめる"});
   }
   if(c.grok?.installed){ if(out.length>1) out.pop(); out.push({name:"Grok",kind:"grok",model:"",role:"別の視点から設計と抜け漏れを指摘するレビュアー"}); }
   if(c.codex?.installed) out.push({name:"Codex",kind:"codex",model:"",role:"シンプルさと保守性を重視"});
@@ -213,175 +337,343 @@ function defaultAgents(){
   if(!out.length) out.push({name:"Mock-A",kind:"mock",model:"",role:""},{name:"Mock-B",kind:"mock",model:"",role:""});
   return out;
 }
-function agentRow(a){
-  const d = document.createElement("div"); d.className="agent-row";
-  const opts = Object.entries(INFO.clis).map(([k,v])=>`<option value="${k}" ${k===a.kind?"selected":""} ${v.installed?"":"disabled"}>${esc(v.label)}${v.installed?"":"（未インストール）"}</option>`).join("");
-  d.innerHTML = `<div><label>名前</label><input class="aName" value="${esc(a.name)}"></div>
-    <div><label>種類</label><select class="aKind">${opts}</select></div>
-    <div><label>モデル（任意）</label><input class="aModel" value="${esc(a.model)}" placeholder="既定"></div>
-    <div><label>役割・性格（任意）</label><input class="aRole" value="${esc(a.role)}"></div>
-    <button class="aDel" title="削除" aria-label="削除">×</button>`;
+const EFF={};  // エフォートは各CLIの元の表記 (low / medium / high …) のまま出す
+function modelOpts(kind,val){
+  const ms=INFO.clis[kind]?.models||[], known=!val||ms.some(m=>m[0]===val);
+  return `<option value="">既定</option>`+ms.map(([v,l])=>`<option value="${esc(v)}" ${v===val?"selected":""}>${esc(l)}</option>`).join("")
+    +`<option value="__custom" ${known?"":"selected"}>その他（入力する）</option>`;
+}
+function effOpts(kind,val){
+  return `<option value="">既定</option>`+(INFO.clis[kind]?.efforts||[]).map(e=>`<option value="${e}" ${e===val?"selected":""}>${EFF[e]||e}</option>`).join("");
+}
+function editRow(a){
+  const d=document.createElement("div"); d.className="edit agent-row";
+  const opts=Object.entries(INFO.clis).map(([k,v])=>`<option value="${k}" ${k===a.kind?"selected":""} ${v.installed?"":"disabled"}>${esc(v.label)}${v.installed?"":"（未インストール）"}</option>`).join("");
+  d.innerHTML=`<input class="aName" value="${esc(a.name)}" placeholder="名前" aria-label="名前">
+    <select class="aKind" aria-label="種類">${opts}</select>
+    <button class="x aDel" title="外す" aria-label="外す">×</button>
+    <div><span class="mini">モデル</span><select class="aModelSel" aria-label="モデル"></select></div>
+    <div class="effBox" style="grid-column:2/-1"><span class="mini">エフォート（考える深さ）</span><select class="aEffort" aria-label="エフォート"></select></div>
+    <input class="aModel" value="" placeholder="モデル名（例: claude-opus-5-5）" aria-label="モデル名" style="grid-column:1/-1">
+    <input class="aRole role" value="${esc(a.role)}" placeholder="役割・性格（任意）" aria-label="役割">`;
+  const kind=d.querySelector(".aKind"), msel=d.querySelector(".aModelSel"), mtxt=d.querySelector(".aModel"), eff=d.querySelector(".aEffort");
+  function fill(model,effort){
+    msel.innerHTML=modelOpts(kind.value,model); eff.innerHTML=effOpts(kind.value,effort);
+    mtxt.value=msel.value==="__custom"?(model||""):"";
+    mtxt.classList.toggle("hidden",msel.value!=="__custom");
+    d.querySelector(".effBox").classList.toggle("hidden",!(INFO.clis[kind.value]?.efforts||[]).length);
+  }
+  fill(a.model||"",a.effort||"");
+  kind.onchange=()=>{fill("","");saveForm()};
+  msel.onchange=()=>{mtxt.classList.toggle("hidden",msel.value!=="__custom"); if(msel.value==="__custom") mtxt.focus(); saveForm()};
   d.querySelector(".aDel").onclick=()=>{d.remove();saveForm()};
-  d.querySelectorAll("input,select").forEach(e=>e.oninput=saveForm);
+  d.querySelectorAll("input,select").forEach(e=>e.addEventListener("input",saveForm));
   return d;
 }
-function readAgents(){return [...document.querySelectorAll(".agent-row")].map(r=>({name:r.querySelector(".aName").value.trim(),kind:r.querySelector(".aKind").value,model:r.querySelector(".aModel").value.trim(),role:r.querySelector(".aRole").value.trim()}))}
-function saveForm(){store("form",{goal:$("#fGoal").value,agents:readAgents(),rounds:$("#fRounds").value,perm:$("#fPerm").value,git:$("#fGit").value})}
-function showSetup(){
-  const f = load("form",null);
-  $("#fProject").value = INFO.project;
-  $("#fGoal").value = f?.goal||"";
-  $("#fRounds").value = f?.rounds||6; $("#fPerm").value=f?.perm||"acceptEdits"; $("#fGit").value=f?.git||"1";
-  const rows=$("#agentRows"); rows.innerHTML="";
-  const ags = (f?.agents?.length? f.agents.filter(a=>INFO.clis[a.kind]?.installed) : null) || defaultAgents();
-  (ags.length?ags:defaultAgents()).forEach(a=>rows.appendChild(agentRow(a)));
-  $("#setup").classList.remove("hidden"); $("#btnNew").classList.add("hidden");
+function readAgents(){return [...document.querySelectorAll(".agent-row")].map(r=>{
+  const ms=r.querySelector(".aModelSel").value;
+  return {name:r.querySelector(".aName").value.trim(),kind:r.querySelector(".aKind").value,
+    model:ms==="__custom"?r.querySelector(".aModel").value.trim():ms,effort:r.querySelector(".aEffort").value,
+    role:r.querySelector(".aRole").value.trim()}})}
+function saveForm(){store("form",{goal:mode()==="idle"?$("#input").value:"",agents:readAgents(),rounds:$("#fRounds").value,perm:$("#fPerm").value,git:$("#fGit").value,project:$("#fProject").value}); renderChips()}
+function showSetup(project){
+  const f=load("form",null);
+  $("#fProject").value=project||INFO.project;
+  $("#input").value=f?.goal||""; autosize();
+  $("#fRounds").value=f?.rounds||6; $("#fPerm").value=f?.perm||"acceptEdits"; $("#fGit").value=f?.git||"1";
+  const box=$("#memberEdit"); box.innerHTML="";
+  const saved=f?.agents?.length? f.agents.filter(a=>INFO.clis[a.kind]?.installed):[];
+  (saved.length?saved:defaultAgents()).forEach(a=>box.appendChild(editRow(a)));
+  renderAll();
 }
-$("#btnAddAgent").onclick=()=>{const k=INFO.clis.claude?.installed?"claude":"mock";$("#agentRows").appendChild(agentRow({name:`AI-${document.querySelectorAll(".agent-row").length+1}`,kind:k,model:"",role:""}));saveForm()};
-["#fGoal","#fRounds","#fPerm","#fGit"].forEach(s=>$(s).oninput=saveForm);
-$("#btnStart").onclick=async()=>{
-  $("#setupErr").textContent="";
+$("#btnAddAgent").onclick=()=>{const k=INFO.clis.claude?.installed?"claude":"mock";$("#memberEdit").appendChild(editRow({name:`AI-${document.querySelectorAll(".agent-row").length+1}`,kind:k,model:"",role:""}));saveForm()};
+["#fRounds","#fPerm","#fGit","#fProject"].forEach(s=>$(s).addEventListener("input",saveForm));
+
+/* ---------- 入力欄 ---------- */
+function autosize(){const t=$("#input");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,220)+"px"}
+$("#input").addEventListener("input",()=>{autosize(); if(mode()==="idle") saveForm()});
+$("#input").addEventListener("keydown",e=>{ if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){e.preventDefault();send()} });
+$("#btnSend").onclick=send;
+$("#sugs").onclick=e=>{ if(e.target.tagName==="BUTTON"){$("#input").value=e.target.textContent;autosize();saveForm();$("#input").focus()} };
+function foot(msg,err){const f=$("#foot");f.textContent=msg||"";f.classList.toggle("err",!!err)}
+async function send(){
+  const t=$("#input").value.trim(), m=mode();
+  if(m!=="done" && !t) return;
+  $("#btnSend").disabled=true; foot("");
   try{
-    $("#btnStart").disabled=true;
-    await post("/api/start",{project:$("#fProject").value,goal:$("#fGoal").value,agents:readAgents(),
-      max_rounds:+$("#fRounds").value,permission:$("#fPerm").value,use_git:$("#fGit").value==="1"});
-    $("#setup").classList.add("hidden");
-  }catch(e){$("#setupErr").textContent=e.message}finally{$("#btnStart").disabled=false}
+    if(m==="idle"){
+      await post("/api/start",{project:$("#fProject").value,goal:t,agents:readAgents(),
+        max_rounds:+$("#fRounds").value,permission:$("#fPerm").value,use_git:$("#fGit").value==="1"});
+      const f=load("form",{}); f.goal=""; store("form",f);
+      $("#input").value=""; autosize(); goLive(); return;
+    } else if(m==="running"){
+      await post("/api/note",{text:t});
+    } else {
+      await post("/api/continue",{rounds:+$("#fRounds").value||3,note:t});
+    }
+    $("#input").value=""; autosize();
+  }catch(e){foot(e.message,true)}finally{$("#btnSend").disabled=false}
+}
+$("#btnStop").onclick=async()=>{ if(!confirm("作業中のAIを止めます。よろしいですか？")) return; try{await post("/api/stop")}catch(e){foot(e.message,true)}};
+function renderChips(){
+  const p=$("#fProject").value||INFO?.project||"";
+  $("#chipProjText").textContent=p.split(/[\\/]/).filter(Boolean).pop()||p;
+  $("#chipProj").title=p;
+  const perm={acceptEdits:"編集だけ",editsAndCommands:"編集＋コマンド",bypassPermissions:"おまかせ"}[$("#fPerm").value];
+  $("#chipSetText").textContent=(mode()==="done"?`あと ${$("#fRounds").value} ラウンド`:`最大 ${$("#fRounds").value} ラウンド`)+" · "+perm;
+}
+document.querySelectorAll(".pop").forEach(p=>{
+  p.querySelector(".chip").onclick=e=>{e.stopPropagation();const b=p.querySelector(".box");const open=b.classList.contains("hidden");document.querySelectorAll(".pop .box").forEach(x=>x.classList.add("hidden"));if(open)b.classList.remove("hidden")};
+  p.querySelector(".box").onclick=e=>e.stopPropagation();
+});
+document.addEventListener("click",()=>document.querySelectorAll(".pop .box").forEach(x=>x.classList.add("hidden")));
+$("#btnNew").onclick=()=>newChat();
+$("#btnNewSide").onclick=()=>newChat();
+$("#btnPanel").onclick=e=>{e.stopPropagation();$("#side").classList.remove("open");$("#panel").classList.toggle("open")};
+$("#btnSide").onclick=e=>{e.stopPropagation();$("#panel").classList.remove("open");$("#side").classList.toggle("open")};
+$("#panel").onclick=e=>e.stopPropagation();
+$("#side").addEventListener("click",e=>e.stopPropagation());
+document.addEventListener("click",()=>{$("#panel").classList.remove("open");$("#side").classList.remove("open")});
+
+/* ---------- 左: プロジェクトとチャットの一覧 ---------- */
+let OPEN = new Set(load("open",[]));
+function fmtDate(t){
+  if(!t) return ""; const d=new Date(t*1000), n=new Date();
+  if(d.toDateString()===n.toDateString()) return d.toTimeString().slice(0,5);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function same(a,b){return (a||"").replace(/[\\/]+$/,"").toLowerCase()===(b||"").replace(/[\\/]+$/,"").toLowerCase()}
+function activeId(){return VIEW.kind==="past"?VIEW.id:VIEW.kind==="live"?S.id:null}
+function selProject(){return mode()==="idle"?$("#fProject").value:(S.project||$("#fProject").value)}
+async function loadProjects(){
+  try{PROJ=await (await fetch("/api/projects",{cache:"no-store"})).json(); renderSide()}catch(e){}
+}
+let projTimer=null;
+function refreshProjectsSoon(){clearTimeout(projTimer);projTimer=setTimeout(loadProjects,400)}
+function renderSide(){
+  const sel=selProject(), act=activeId(), list=$("#plist");
+  if(!PROJ.projects.length){list.innerHTML=`<div class="empty-side">まだプロジェクトがありません。上の「＋」か、チャットを始めると追加されます。</div>`;return}
+  list.innerHTML=PROJ.projects.map(p=>{
+    const isSel=same(p.path,sel), open=OPEN.has(p.path)||isSel||p.sessions.some(s=>s.id===act);
+    const chats=p.sessions.length?p.sessions.map(s=>`<div class="ch ${s.id===act?"active":""}" data-project="${esc(p.path)}" data-id="${esc(s.id)}" title="${esc(s.goal)}">
+        <span class="st ${esc(s.status)}"></span><span class="t">${esc((s.goal||"（ゴールなし）").split("\n")[0])}</span><span class="d">${fmtDate(s.updated)}</span></div>`).join("")
+      :`<div class="empty-side">まだチャットはありません</div>`;
+    return `<div class="pj ${isSel?"sel":""} ${open?"open":""} ${p.exists?"":"gone"}" data-path="${esc(p.path)}" title="${esc(p.path)}">
+        <span class="caret">▶</span><span class="nm">📁 ${esc(p.name)}</span><span class="cnt">${p.sessions.length||""}</span>
+        <button class="act pj-new" title="このプロジェクトで新しいチャット" aria-label="このプロジェクトで新しいチャット">＋</button>
+        <button class="act pj-x" title="一覧から外す（フォルダは消えません）" aria-label="一覧から外す">×</button></div>
+      ${open?`<div class="chats">${chats}</div>`:""}`}).join("");
+}
+$("#plist").onclick=async e=>{
+  const ch=e.target.closest(".ch"); if(ch){openChat(ch.dataset.project,ch.dataset.id);return}
+  const pj=e.target.closest(".pj"); if(!pj) return; const path=pj.dataset.path;
+  if(e.target.closest(".pj-new")){newChat(path);return}
+  if(e.target.closest(".pj-x")){
+    if(!confirm(`「${path}」を一覧から外しますか？\nフォルダやチャットの記録は消えません。`)) return;
+    try{await post("/api/projects/remove",{path}); loadProjects()}catch(err){alert(err.message)} return;
+  }
+  OPEN.has(path)?OPEN.delete(path):OPEN.add(path); store("open",[...OPEN]);
+  if(mode()==="idle"){$("#fProject").value=path; saveForm()}
+  renderSide();
 };
-$("#btnNew").onclick=()=>{ if(S && S.status==="running") return; $("#timeline").innerHTML=""; showSetup(); window.scrollTo(0,0)};
+async function addProject(){
+  try{
+    let r=await post("/api/projects/add",{pick:true}).catch(e=>({error:e.message}));
+    if(r.error){const p=prompt("プロジェクトのフォルダのパスを入力してください",""); if(!p) return; r=await post("/api/projects/add",{path:p})}
+    if(r.cancelled) return;
+    OPEN.add(r.path); store("open",[...OPEN]); await loadProjects(); newChat(r.path);
+  }catch(e){alert(e.message)}
+}
+$("#btnAddProj").onclick=addProject;
+$("#btnPick").onclick=async()=>{
+  try{const r=await post("/api/projects/add",{pick:true}); if(r.cancelled) return; $("#fProject").value=r.path; saveForm(); loadProjects()}
+  catch(e){foot(e.message,true)}
+};
 
-/* ---------- 実行中の操作 ---------- */
-$("#btnNote").onclick=async()=>{const t=$("#noteText").value.trim(); if(!t) return; try{await post("/api/note",{text:t}); $("#noteText").value=""}catch(e){alert(e.message)}};
-$("#btnStop").onclick=async()=>{ if(!confirm("実行中のAIを止めます。よろしいですか？")) return; try{await post("/api/stop")}catch(e){alert(e.message)}};
-$("#btnCont").onclick=async()=>{try{await post("/api/continue",{rounds:+$("#contRounds").value,note:$("#contNote").value}); $("#contNote").value=""}catch(e){alert(e.message)}};
+/* ---------- 画面の切り替え ---------- */
+function closeES(){ if(ES){ES.close();ES=null} }
+function goLive(){ VIEW={kind:"live"}; closeES(); resetState(); renderAll(); connect(); refreshProjectsSoon() }
+function newChat(project){
+  VIEW={kind:"new"}; closeES(); resetState(); showSetup(project); renderSide();
+  $("#side").classList.remove("open"); $("#input").focus();
+}
+async function openChat(project,id){
+  $("#side").classList.remove("open");
+  if(id===PROJ.live){ goLive(); return }
+  try{
+    const j=await (await fetch(`/api/history?project=${encodeURIComponent(project)}&id=${encodeURIComponent(id)}`,{cache:"no-store"})).json();
+    if(j.error) throw new Error(j.error);
+    VIEW={kind:"past",project,id}; closeES(); resetState();
+    j.events.forEach(ev=>handle(ev,true));
+    S.past=true; S.agents.forEach(a=>{a._busy=false}); renderAll(); renderSide();
+    const s=$("#scroll"); s.scrollTop=s.scrollHeight;
+  }catch(e){alert("チャットを開けませんでした: "+e.message)}
+}
 
-/* ---------- イベント → 画面 ---------- */
-function resetState(){S={agents:[],byId:{},turns:{},round:0,max:0,status:"idle",verdicts:{},roundEl:{},reviewsEl:{}}; $("#timeline").innerHTML=""}
-function agentName(id){return S.byId[id]?.name||id}
-function renderTeam(){
-  const tl=$("#teamList");
-  if(!S.agents.length){return}
-  tl.innerHTML = S.agents.map((a,i)=>{
-    const [bg,fg]=colorOf(i); const st=a._state||"待機"; const v=a._verdict;
-    return `<div class="agent"><div class="av" style="background:${bg};color:${fg}">${esc(a.name.slice(0,2))}</div>
-      <div style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span class="nm">${esc(a.name)}</span>${v?`<span class="vd ${v}">${v}</span>`:""}</div>
-      <div class="sub">${esc(INFO.clis[a.kind]?.label||a.kind)}${a.model?" · "+esc(a.model):""}</div>
+/* ---------- 状態 → 画面 ---------- */
+function resetState(){S={id:null,past:false,agents:[],byId:{},turns:{},round:0,max:0,status:"idle",verdicts:{},reviewsEl:{},usage:{},project:""}; $("#timeline").innerHTML=""}
+function renderAll(){
+  const m=mode();
+  const st=$("#hStatus"); st.className="pill "+(m==="idle"?"idle":S.status);
+  st.textContent=m==="idle"?"新しいチャット":m==="past"?"過去のチャット · "+(STLABEL[S.status]||S.status):(STLABEL[S.status]||S.status);
+  $("#hProj").textContent=m==="idle"?$("#fProject").value:(S.project||INFO?.project||"");
+  $("#welcome").classList.toggle("hidden",m!=="idle");
+  $("#btnNew").classList.toggle("hidden",m==="idle");
+  $("#btnStop").classList.toggle("hidden",m!=="running");
+  $("#popProj").classList.toggle("hidden",m!=="idle");
+  $("#popSet").classList.toggle("hidden",m==="past");
+  $("#input").disabled=$("#btnSend").disabled=m==="past";
+  if(m==="past"){
+    $("#input").placeholder="過去のチャットを表示しています（続きをするときは「＋ 新しいチャット」から）";
+    $("#memberEdit").classList.add("hidden"); $("#btnAddAgent").classList.add("hidden"); $("#memberLive").classList.remove("hidden");
+    foot(""); renderMembers(); renderUsage(); return;
+  }
+  $("#memberEdit").classList.toggle("hidden",m!=="idle");
+  $("#btnAddAgent").classList.toggle("hidden",m!=="idle");
+  $("#memberLive").classList.toggle("hidden",m==="idle");
+  $("#lblRounds").textContent=m==="done"?"追加するラウンド数":"最大ラウンド数";
+  $("#input").placeholder = m==="idle" ? "やってほしいことを書いてください"
+    : m==="running" ? "AIたちへのメモ（次のラウンドで伝えます）" : "続けてほしいことがあれば書いてください（空でも続けられます）";
+  if(!$("#foot").classList.contains("err")) foot(m==="running"?"メモを送ると、次のラウンドで指示として渡されます":m==="done"?"送信すると、今の状態から続きをやります":"");
+  renderChips(); renderMembers(); renderUsage();
+}
+function renderMembers(){
+  if(!S.agents.length) return;
+  $("#memberLive").innerHTML=S.agents.map(a=>{
+    const v=a._verdict;
+    return `<div class="mem">${avatar(a)}
+      <div style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span class="nm">${esc(a.name)}</span>${v?`<span class="vd ${v}">${VLABEL[v]}</span>`:""}</div>
+      <div class="sub">${esc(INFO.clis[a.kind]?.label||a.kind)}${a.model?" · "+esc(a.model):""}${a.effort?" · エフォート "+esc(EFF[a.effort]||a.effort):""}</div>
       ${a.role?`<div class="sub">${esc(a.role)}</div>`:""}
-      <div class="state ${a._busy?"busy":""}">${esc(st)}</div></div></div>`}).join("");
+      <div class="state ${a._busy?"busy":""}">${esc(a._state||"待機中")}</div></div></div>`}).join("");
 }
-function renderHeader(){
-  const st=S.status, label={idle:"待機",running:"作業中",consensus:"不動点に到達",stopped:"停止",max_rounds:"上限到達",error:"エラー"}[st]||st;
-  const p=$("#hStatus"); p.className="pill "+st; p.textContent=label;
-  const r=$("#hRound"); if(S.round){r.classList.remove("hidden"); r.textContent=`ラウンド ${S.round} / ${S.max}`}
-  const v=S.verdicts[S.round]||{};
-  $("#hMeter").innerHTML=S.agents.map(a=>`<span class="${v[a.id]||""}" title="${esc(a.name)}: ${v[a.id]||"未判定"}"></span>`).join("");
-  const running = st==="running";
-  $("#ctlRunning").classList.toggle("hidden",!running);
-  $("#ctlDone").classList.toggle("hidden",running||st==="idle");
-  $("#btnNew").classList.toggle("hidden",running||st==="idle");
+function tok(u){let i=0,o=0;if(u&&typeof u==="object")for(const[k,v]of Object.entries(u)){if(typeof v!=="number")continue;const K=k.toLowerCase();if(K.includes("total"))continue;if(/output|completion/.test(K))o+=v;else if(/input|prompt|cache/.test(K))i+=v}return[i,o]}
+function renderUsage(){
+  const el=$("#usage");
+  if(!S.agents.length){el.innerHTML=`<div class="muted" style="font-size:13px">まだ何も動かしていません。</div>`;return}
+  const v=S.verdicts[S.round]||{}, pct=S.max?Math.min(100,S.round/S.max*100):0;
+  let secs=0,cost=0,tin=0,tout=0,turns=0;
+  const rows=S.agents.map(a=>{const u=S.usage[a.id]||{turns:0,secs:0,cost:0,tin:0,tout:0};secs+=u.secs;cost+=u.cost;tin+=u.tin;tout+=u.tout;turns+=u.turns;
+    return `<tr><td>${esc(a.name)}</td><td>${u.turns}</td><td>${fmtSec(u.secs)}</td><td>${u.tin+u.tout?fmtTok(u.tin+u.tout):"—"}</td></tr>`}).join("");
+  el.innerHTML=`<div class="stat"><span>ラウンド</span><b>${S.round} / ${S.max}</b></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="stat"><span>このラウンドの判定</span><span class="meter">${S.agents.map(a=>`<span class="${v[a.id]||""}" title="${esc(a.name)}: ${VLABEL[v[a.id]]||"まだ"}"></span>`).join("")}</span></div>
+    <div class="stat"><span>作業時間</span><b>${fmtSec(secs)}</b></div>
+    <div class="stat"><span>トークン（入力 / 出力）</span><b>${tin+tout?fmtTok(tin)+" / "+fmtTok(tout):"—"}</b></div>
+    ${cost?`<div class="stat"><span>料金の目安</span><b>$${cost.toFixed(3)}</b></div>`:""}
+    <table class="use" style="margin-top:8px"><tr><th>メンバー</th><th>回数</th><th>時間</th><th>トークン</th></tr>${rows}</table>`;
 }
-function ensureRound(n){
-  if(S.roundEl[n]) return S.roundEl[n];
-  const h=document.createElement("div"); h.className="round-h"; h.textContent=`ラウンド ${n}`;
-  $("#timeline").appendChild(h); S.roundEl[n]=h; return h;
-}
+
+/* ---------- イベント → チャット ---------- */
+const TL = () => $("#timeline");
+function add(el){TL().appendChild(el);return el}
+function div(cls,html){const d=document.createElement("div");d.className=cls;if(html!=null)d.innerHTML=html;return d}
+function userMsg(text,label){add(div("msg user",`<div class="bubble">${label?`<span class="lbl">${esc(label)}</span>`:""}${esc(text)}</div>`))}
 function turnEl(ev){
-  const a=S.byId[ev.agent], i=S.agents.indexOf(a), [bg,fg]=colorOf(Math.max(i,0));
-  const el=document.createElement("div"); el.className="turn";
-  el.innerHTML=`<div class="turn-h"><span class="av" style="width:22px;height:22px;font-size:10px;background:${bg};color:${fg}">${esc((a?.name||"?").slice(0,2))}</span>
-   <span class="who">${esc(a?.name||ev.agent)}</span><span class="ph">${ev.phase==="build"?"実装":"レビュー"}</span>
-   <span class="spacer"></span><span class="tm muted" style="font-size:12px">作業中…</span><span class="vdx"></span></div><div class="turn-b"></div>`;
+  const a=S.byId[ev.agent];
+  const el=div("msg ai",`${avatar(a)}<div class="mb"><div class="mh"><b>${esc(a?.name||ev.agent)}</b><span class="tag">${ev.phase==="build"?"作業":"レビュー"}</span><span class="tm dots">考え中</span><span class="vdx"></span></div><div class="mt"></div></div>`);
   return el;
 }
 function addDiff(ev){
-  if(!ev.sha){const d=document.createElement("div");d.className="info";d.textContent="（このターンでファイルの変更はありませんでした）";$("#timeline").appendChild(d);return}
+  if(!ev.sha){add(div("sys")).textContent="（このターンではファイルは変わりませんでした）";return}
   const d=document.createElement("details"); d.className="diff";
   const lines=(ev.diff||"").split("\n").map(l=>{const c=l.startsWith("+")&&!l.startsWith("+++")?"a":l.startsWith("-")&&!l.startsWith("---")?"d":l.startsWith("@@")?"h":"";return c?`<span class="${c}">${esc(l)||" "}</span>`:esc(l)+"\n"}).join("");
   const files=(ev.stat||"").trim().split("\n").pop();
-  d.innerHTML=`<summary>差分 <code>${esc((ev.sha||"").slice(0,7))}</code> — ${esc(files)}</summary><pre>${esc(ev.stat)}\n${lines}</pre>`;
-  $("#timeline").appendChild(d);
+  d.innerHTML=`<summary>変更を見る · <code>${esc((ev.sha||"").slice(0,7))}</code> · ${esc(files)}</summary><pre>${esc(ev.stat)}\n${lines}</pre>`;
+  add(d);
 }
-function nearBottom(){return window.innerHeight+window.scrollY>=document.body.scrollHeight-200}
-function handle(ev){
-  const stick=nearBottom();
+function fold(t){
+  if(t.body.scrollHeight<=130) return;
+  t.body.classList.add("fold");
+  const b=document.createElement("button"); b.className="more"; b.textContent="全文を見る";
+  b.onclick=()=>{const f=t.body.classList.toggle("fold");b.textContent=f?"全文を見る":"たたむ"};
+  t.body.after(b);
+}
+function nearBottom(){const s=$("#scroll");return s.scrollHeight-s.scrollTop-s.clientHeight<200}
+function handle(ev,replay){
+  const stick=!replay && nearBottom();
   switch(ev.type){
     case "session":
-      resetState(); S.agents=ev.agents; S.agents.forEach(a=>S.byId[a.id]=a); S.max=ev.max_rounds;
-      $("#hProj").textContent=ev.project; $("#setup").classList.add("hidden");
-      const g=document.createElement("div"); g.className="card";
-      g.innerHTML=`<p class="sec-title">ゴール</p><div class="goal">${esc(ev.goal)}</div>`; $("#timeline").appendChild(g);
-      renderTeam(); break;
+      resetState(); S.id=ev.id; S.agents=ev.agents; if(!replay) refreshProjectsSoon(); S.agents.forEach(a=>S.byId[a.id]=a); S.max=ev.max_rounds; S.project=ev.project;
+      userMsg(ev.goal); break;
     case "status":
       S.status=ev.status; if(ev.round) S.round=ev.round; if(ev.max_rounds) S.max=ev.max_rounds;
-      if(["consensus","stopped","max_rounds","error"].includes(ev.status)){
-        const b=document.createElement("div"); b.className="banner "+ev.status; b.textContent=ev.text||ev.status; $("#timeline").appendChild(b);
-        S.agents.forEach(a=>{a._busy=false;a._state="待機"}); renderTeam();
+      if(!replay) refreshProjectsSoon();
+      if(DONE.includes(ev.status)){
+        add(div("endcard "+ev.status)).textContent=(ev.status==="consensus"?"✓ ":"")+(ev.text||ev.status);
+        S.agents.forEach(a=>{a._busy=false;a._state="待機中"});
       }
       break;
     case "round":
-      S.round=ev.round; ensureRound(ev.round);
-      S.agents.forEach(a=>a._verdict=null); renderTeam(); break;
+      S.round=ev.round; add(div("divider")).textContent=`ラウンド ${ev.round}`;
+      S.agents.forEach(a=>a._verdict=null); break;
     case "turn_start":{
-      ensureRound(ev.round);
-      const el=turnEl(ev); S.turns[ev.turn]={el,body:el.querySelector(".turn-b")};
+      const el=turnEl(ev); S.turns[ev.turn]={el,body:el.querySelector(".mt")};
       if(ev.phase==="review"){
-        let g=S.reviewsEl[ev.round]; if(!g){g=document.createElement("div");g.className="reviews";$("#timeline").appendChild(g);S.reviewsEl[ev.round]=g}
+        let g=S.reviewsEl[ev.round]; if(!g){g=add(div("reviews"));S.reviewsEl[ev.round]=g}
         g.appendChild(el);
-      } else $("#timeline").appendChild(el);
-      const a=S.byId[ev.agent]; if(a){a._busy=true;a._state=ev.phase==="build"?"実装中":"レビュー中";renderTeam()}
+      } else add(el);
+      const a=S.byId[ev.agent]; if(a){a._busy=true;a._state=ev.phase==="build"?"書いています":"レビュー中"}
       break;}
-    case "chunk":{const t=S.turns[ev.turn]; if(t){t.body.append(ev.text); if(t.body.scrollHeight-t.body.scrollTop-t.body.clientHeight<80) t.body.scrollTop=t.body.scrollHeight} break;}
-    case "tool":{const t=S.turns[ev.turn]; if(t){const s=document.createElement("span");s.className="tool";s.textContent=`› ${ev.name} ${ev.detail||""}`;t.body.append(s,"\n")} break;}
+    case "chunk":{const t=S.turns[ev.turn]; if(t){t.body.append(ev.text)} break;}
+    case "tool":{const t=S.turns[ev.turn]; if(t){const s=document.createElement("span");s.className="tool";s.textContent=`${ev.name} ${ev.detail||""}`;t.body.append(s,"\n")} break;}
     case "turn_end":{
-      const t=S.turns[ev.turn]; const a=S.byId[ev.agent];
+      const t=S.turns[ev.turn], a=S.byId[ev.agent];
+      const v=ev.phase==="review"?(ev.error?"ERROR":(ev.verdict||"UNKNOWN")):null;
       if(t){
-        const tm=t.el.querySelector(".tm");
+        const tm=t.el.querySelector(".tm"); tm.classList.remove("dots");
         if(ev.error){tm.textContent="エラー"; const e=document.createElement("div"); e.style.color="var(--bad)"; e.textContent=ev.error; t.body.append(e)}
-        else if(ev.stopped){tm.textContent="停止"}
+        else if(ev.stopped){tm.textContent="止めました"}
         else{
           tm.textContent=(ev.secs?ev.secs+"秒":"")+(ev.meta?.cost_usd?` · $${(+ev.meta.cost_usd).toFixed(3)}`:"");
           if(!t.body.textContent.trim() && ev.text) t.body.append(ev.text);
-          else if(ev.text && !t.body.textContent.includes(ev.text.slice(-60))){const f=document.createElement("div");f.style.borderTop="1px solid var(--border)";f.style.marginTop="6px";f.style.paddingTop="6px";f.textContent=ev.text;t.body.append(f)}
+          else if(ev.text && !t.body.textContent.includes(ev.text.slice(-60))){const f=document.createElement("div");f.style.marginTop="6px";f.textContent=ev.text;t.body.append(f)}
         }
-        if(ev.phase==="review"){const v=ev.error?"ERROR":(ev.verdict||"UNKNOWN"); t.el.querySelector(".vdx").innerHTML=`<span class="vd ${v}">${v}</span>`}
+        if(v){t.el.querySelector(".vdx").innerHTML=`<span class="vd ${v}">${VLABEL[v]}</span>`; fold(t)}
       }
-      if(a){a._busy=false;a._state=ev.phase==="build"?"実装を終えました":"レビュー済み"; if(ev.phase==="review") a._verdict=ev.error?"ERROR":(ev.verdict||"UNKNOWN"); renderTeam()}
-      if(ev.phase==="review"){S.verdicts[S.round]=S.verdicts[S.round]||{}; S.verdicts[S.round][ev.agent]=ev.error?"ERROR":(ev.verdict||"UNKNOWN")}
+      if(a){
+        a._busy=false; a._state=ev.phase==="build"?"書き終わりました":"レビュー済み"; if(v) a._verdict=v;
+        const u=S.usage[a.id]=S.usage[a.id]||{turns:0,secs:0,cost:0,tin:0,tout:0};
+        u.turns++; u.secs+=+ev.secs||0; u.cost+=+(ev.meta?.cost_usd)||0;
+        const [i,o]=tok(ev.meta?.usage); u.tin+=i; u.tout+=o;
+      }
+      if(v){S.verdicts[S.round]=S.verdicts[S.round]||{}; S.verdicts[S.round][ev.agent]=v}
       break;}
     case "commit": addDiff(ev); break;
-    case "tally":{const d=document.createElement("div");d.className="info";d.textContent=`判定: ${ev.approved} / ${ev.total} 人が APPROVE`;$("#timeline").appendChild(d);break;}
-    case "note":{const d=document.createElement("div");d.className="note";d.textContent="人間からのメモ: "+ev.text;$("#timeline").appendChild(d);break;}
-    case "info":{const d=document.createElement("div");d.className="info";d.textContent=ev.text;$("#timeline").appendChild(d);break;}
-    case "error":{const d=document.createElement("div");d.className="banner error";d.textContent=ev.text;$("#timeline").appendChild(d);break;}
+    case "tally": add(div("sys")).textContent=`${ev.total} 人中 ${ev.approved} 人が OK`; break;
+    case "note": userMsg(ev.text,"メモ"); break;
+    case "info": add(div("sys")).textContent=ev.text; break;
+    case "error": add(div("endcard error")).textContent=ev.text; break;
   }
-  renderHeader();
-  if(stick) window.scrollTo(0,document.body.scrollHeight);
+  if(replay) return;
+  renderAll();
+  if(stick){const s=$("#scroll"); s.scrollTop=s.scrollHeight}
 }
 
 function connect(){
-  const es=new EventSource("/api/events");
+  const es=ES=new EventSource("/api/events");
   es.addEventListener("hello",e=>{const d=JSON.parse(e.data); if(!d.session && !S.agents.length) showSetup()});
-  es.addEventListener("reset",()=>{es.close(); resetState(); connect()});
-  es.onmessage=e=>handle(JSON.parse(e.data));
+  es.addEventListener("reset",()=>{ if(ES===es) goLive() });
+  es.onmessage=e=>{ if(ES===es && VIEW.kind==="live") handle(JSON.parse(e.data)) };
+  es.addEventListener("hello",()=>renderSide());
 }
 
 /* ---------- 更新・終了 ---------- */
 function renderUpdate(info){
   $("#hVer").textContent="v"+info.version+(info.update?.enabled?" · 自動更新オン":"");
   const u=info.update||{}, bar=$("#updBar");
-  if(u.applying){bar.classList.remove("hidden");$("#updText").textContent="更新を適用しています。まもなく自動で再読み込みします…";$("#btnUpd").classList.add("hidden");return}
+  if(u.applying){bar.classList.remove("hidden");$("#updText").textContent="アップデートしています。終わったら自動で読み込み直します…";$("#btnUpd").classList.add("hidden");return}
   if(u.available){bar.classList.remove("hidden");$("#btnUpd").classList.remove("hidden");
-    $("#updText").textContent=`新しいバージョン v${u.available} があります。AIの作業が終わったら自動で更新します。${u.notes?"（"+u.notes+"）":""}`;}
-  else if(u.error){bar.classList.remove("hidden");$("#btnUpd").classList.add("hidden");$("#updText").textContent="更新の確認に失敗しました: "+u.error}
+    $("#updText").textContent=`新しいバージョン v${u.available} があります。AIの作業が終わったら自動で入れ替えます。${u.notes?"（"+u.notes+"）":""}`;}
+  else if(u.error){bar.classList.remove("hidden");$("#btnUpd").classList.add("hidden");$("#updText").textContent="アップデートの確認に失敗しました: "+u.error}
   else bar.classList.add("hidden");
 }
 $("#btnUpd").onclick=async()=>{try{const r=await post("/api/update_now");if(!r.updated)alert("最新です (v"+r.version+")")}catch(e){alert(e.message)}};
 $("#btnQuit").onclick=async()=>{
-  if(S && S.status==="running" && !confirm("AIが作業中です。止めて終了しますか？")) return;
+  if(mode()==="running" && !confirm("AIが作業中です。止めて終了しますか？")) return;
   try{await post("/api/shutdown")}catch(e){}
   document.body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2)">FixPoint を終了しました。スタートメニューの「FixPoint」からまた起動できます。</div>';
 };
-// サーバーが更新で再起動したら、新しい画面を読み込み直す
 setInterval(async()=>{
   try{const i=await (await fetch("/api/info",{cache:"no-store"})).json();
     if(INFO && i.version!==INFO.version){location.reload();return}
@@ -391,9 +683,12 @@ setInterval(async()=>{
 (async()=>{
   INFO=await (await fetch("/api/info")).json();
   renderUpdate(INFO);
-  $("#hProj").textContent=INFO.project;
-  $("#cliList").innerHTML=Object.entries(INFO.clis).filter(([k])=>k!=="mock").map(([k,v])=>`<div class="cli"><span>${esc(v.label)}</span>${v.installed?`<span class="ok" title="${esc(v.version)}">使用可</span>`:`<span class="ng" title="${esc(v.login)}">未インストール</span>`}</div>${v.installed?"":`<div class="hint" style="margin:0 0 4px">${esc(v.login)}</div>`}`).join("");
-  resetState(); renderHeader(); connect();
+  $("#fProject").value=INFO.project;
+  $("#cliList").innerHTML=Object.entries(INFO.clis).filter(([k])=>k!=="mock").map(([k,v])=>
+    `<div class="cli"><span class="dot ${v.installed?"on":""}"></span><span>${esc(v.label)}</span><span class="v">${v.installed?esc((v.version||"").split(/\s/).find(x=>/\d+\.\d+/.test(x))||"使えます"):"未インストール"}</span></div>`
+    +(v.installed?"":`<div class="hint">${esc(v.login)}</div>`)).join("");
+  resetState(); renderAll(); connect(); loadProjects();
+  setInterval(loadProjects,20000);
 })();
 </script>
 </body>
