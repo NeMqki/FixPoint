@@ -4,3 +4,5 @@ dist/
 .fixpoint/
 .claude/
 *.log
+.cache/
+build/

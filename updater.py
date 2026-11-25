@@ -275,14 +275,29 @@ def _prune_backups(d: Path, keep: int = 3):
 def _update_uninstall_entry(version: str):
     if os.name != "nt" or os.environ.get("FIXPOINT_NO_REGISTRY"):
         return
+    import winreg
+    # "FixPoint_is1" は setup.exe (Inno Setup) で入れたとき、"fixpoint" は以前の .cmd 版で入れたとき
+    for name in ("FixPoint_is1", "fixpoint"):
+        try:
+            k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                               "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + name, 0, winreg.KEY_SET_VALUE)
+            winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, version)
+            winreg.CloseKey(k)
+        except OSError:
+            pass
+
+
+def configure(update_source: str = "", d: Path | None = None):
+    """インストーラーから呼ばれる。今の設定は残して、更新元だけ最新にする。"""
+    d = d or app_dir()
+    cfg = dict(DEFAULT_CONFIG)
     try:
-        import winreg
-        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                           r"Software\Microsoft\Windows\CurrentVersion\Uninstall\fixpoint", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, version)
-        winreg.CloseKey(k)
-    except OSError:
+        cfg.update(json.loads((d / CONFIG_JSON).read_text(encoding="utf-8")))
+    except Exception:
         pass
+    if update_source:
+        cfg["update_source"] = update_source
+    save_config(cfg, d)
 
 
 def update_if_available(log=print, d: Path | None = None) -> str | None:
@@ -314,3 +329,5 @@ if __name__ == "__main__":
         print(update_if_available() or "更新はありません")
     elif cmd == "rollback":
         print(rollback() or "戻せるバックアップがありません")
+    elif cmd == "configure":
+        configure(sys.argv[2] if len(sys.argv) > 2 else "")

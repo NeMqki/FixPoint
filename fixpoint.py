@@ -997,6 +997,23 @@ def pick_folder() -> str | None:
             "p=f.askdirectory(title='FixPoint: プロジェクトのフォルダを選んでください');print(p or '',end='')")
     try:
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", timeout=600, **NOWIN)
+        if r.returncode == 0:
+            return r.stdout.strip() or ""
+    except Exception:
+        pass
+    if os.name != "nt":
+        return None
+    # セットアップに同梱の Python には tkinter が無いので、Windows のダイアログを使う
+    ps = ("[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;"
+          "$o=New-Object Windows.Forms.Form -Property @{TopMost=$true};"
+          "$d=New-Object Windows.Forms.FolderBrowserDialog -Property @{Description='FixPoint: プロジェクトのフォルダを選んでください';ShowNewFolderButton=$true};"
+          "if($d.ShowDialog($o) -eq 'OK'){[Console]::Write($d.SelectedPath)}")
+    exe = find_exe("powershell")
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-STA", "-Command", ps], capture_output=True, text=True,
+                           encoding="utf-8", timeout=600, **NOWIN)
     except Exception:
         return None
     if r.returncode != 0:

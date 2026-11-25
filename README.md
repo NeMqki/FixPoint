@@ -8,14 +8,14 @@
 
 ## はじめかた
 
-1. [最新リリース](https://github.com/NeMqki/FixPoint/releases/latest) から `fixpoint-setup.cmd` をダウンロードして、ダブルクリックします
+1. [最新リリース](https://github.com/NeMqki/FixPoint/releases/latest) から `fixpoint-setup.exe` をダウンロードして、ダブルクリックします
 2. スタートメニューかデスクトップの「FixPoint」から起動します
-3. プロジェクトのフォルダと、やってほしいことを書いて「開始」を押します
+3. プロジェクトのフォルダを選んで、やってほしいことを書いて送ります
 
 あとは見ているだけで大丈夫です。
 
-> Python 3.9 以上が必要です。入っていなければ、セットアップが入れ方を教えてくれます。
-> ダウンロードしたファイルを開いたときに「PC を保護しました」と出たら、「詳細情報」→「実行」を押してください。
+> Python はセットアップに入っているので、別に入れなくて大丈夫です。管理者の権限もいりません。
+> ダウンロードしたファイルを開いたときに「Windows によって PC が保護されました」と出たら、「詳細情報」→「実行」を押してください。
 
 ## 使えるAI
 
@@ -110,12 +110,15 @@ Claude Code なら、フックを入れておくと、ほかのAIが触ってい
 タグに書いたメッセージは、リリースページと、アプリの「新しいバージョンがあります」のお知らせに表示されます。
 
 ```powershell
-git tag -a v0.3.1 -m "Gemini CLI に対応しました"
+git tag -a v0.4.0 -m "Gemini CLI に対応しました"
 ```
 
 ```powershell
-git push origin v0.3.1
+git push origin v0.4.0
 ```
+
+インストーラーは [Inno Setup](https://jrsoftware.org/isinfo.php) で作っています（`installer/fixpoint.iss`）。
+手元で作るときは Inno Setup 6 を入れて `python publish.py` を実行すると、`dist/fixpoint-setup.exe` ができます。
 
 ## ライセンス
 
