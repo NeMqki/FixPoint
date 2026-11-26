@@ -1,6 +1,6 @@
 ﻿; FixPoint のインストーラー (Inno Setup)。publish.py が ISCC で fixpoint-setup.exe にする。
 ; 直接ビルドするときは、publish.py が作る build/ フォルダを /D で渡す:
-;   ISCC /DAppVer=0.4.0 /DAppDir=..\build\app /DPyDir=..\build\python /DUpdateSource=https://... fixpoint.iss
+;   ISCC /DAppVer=0.6.0 /DAppDir=..\build\app /DPyDir=..\build\python /DAppExe=..\desktop\target\release\fixpoint-app.exe /DUpdateSource=https://... fixpoint.iss
 ;
 ; テスト用のオプション (コマンドライン):
 ;   /TEST=1  PATH・ショートカット・「インストールされているアプリ」への登録をしない
@@ -33,7 +33,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutDir}
 OutputBaseFilename=fixpoint-setup
 SetupIconFile=fixpoint.ico
-UninstallDisplayIcon={app}\fixpoint.ico
+UninstallDisplayIcon={app}\FixPoint.exe
 UninstallDisplayName=FixPoint
 Compression=lzma2/max
 SolidCompression=yes
@@ -57,15 +57,18 @@ Name: "desktopicon"; Description: "デスクトップに FixPoint のアイコ�
 ; 以前の .cmd 版のアンインストーラーと、古い Python のキャッシュ
 Type: files; Name: "{app}\uninstall.ps1"
 Type: filesandordirs; Name: "{app}\__pycache__"
+; v0.5 で Edge の専用ウィンドウに使っていたプロファイル (今は FixPoint アプリの webview/ を使う)
+Type: filesandordirs; Name: "{app}\window"
 
 [Files]
 Source: "{#AppDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "{#PyDir}\*"; DestDir: "{app}\python"; Flags: ignoreversion recursesubdirs
 Source: "fixpoint.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppExe}"; DestDir: "{app}"; DestName: "FixPoint.exe"; Flags: ignoreversion
 
 [Icons]
-Name: "{userprograms}\FixPoint"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\launcher.py"""; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\fixpoint.ico"; Comment: "複数のAIが合意するまで一緒に作業する"; Check: not IsTest
-Name: "{userdesktop}\FixPoint"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\launcher.py"""; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\fixpoint.ico"; Comment: "複数のAIが合意するまで一緒に作業する"; Tasks: desktopicon
+Name: "{userprograms}\FixPoint"; Filename: "{app}\FixPoint.exe"; WorkingDir: "{app}"; Comment: "複数のAIが合意するまで一緒に作業する"; Check: not IsTest
+Name: "{userdesktop}\FixPoint"; Filename: "{app}\FixPoint.exe"; WorkingDir: "{app}"; Comment: "複数のAIが合意するまで一緒に作業する"; Tasks: desktopicon
 
 [Registry]
 ; fixpoint コマンド
@@ -75,7 +78,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\fixpoin
 
 [Run]
 Filename: "{app}\python\python.exe"; Parameters: "-I ""{app}\updater.py"" configure ""{#UpdateSource}"""; Flags: runhidden waituntilterminated
-Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\launcher.py"""; WorkingDir: "{%USERPROFILE}"; Description: "FixPoint を起動する"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\FixPoint.exe"; WorkingDir: "{app}"; Description: "FixPoint を起動する"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
 ; 自動更新で入ったファイル・バックアップ・設定もまとめて消す (各プロジェクトの .fixpoint/ は残る)
@@ -136,16 +139,22 @@ end;
 { 起動中の FixPoint に終了をお願いする (ファイルを置き換えられるように) }
 procedure StopRunning(const Dir: String);
 var
-  Cmd, Cfg: String;
+  Cmd, Cfg, DirQ: String;
   Code: Integer;
 begin
   Cfg := Dir + '\config.json';
   StringChangeEx(Cfg, '''', '''''', True);
+  DirQ := Dir + '\';
+  StringChangeEx(DirQ, '''', '''''', True);
   Cmd := '$p=8765;try{$p=[int]((Get-Content -Raw -Encoding UTF8 -LiteralPath ''' + Cfg + ''' | ConvertFrom-Json).port)}catch{};' +
          'if(-not $p){$p=8765};' +
          'try{Invoke-WebRequest -UseBasicParsing -Method Post -Uri (''http://127.0.0.1:''+$p+''/api/shutdown'') ' +
          '-Headers @{''X-Fixpoint''=''1''} -Body ''{}'' -ContentType ''application/json'' -TimeoutSec 2 | Out-Null;' +
-         'Start-Sleep -Milliseconds 1500}catch{}';
+         'Start-Sleep -Milliseconds 1500}catch{};' +
+         { FixPoint アプリ (FixPoint.exe) も閉じる。ほかの場所にある同じ名前のアプリには触らない }
+         '$d=''' + DirQ + ''';Get-Process -Name FixPoint -ErrorAction SilentlyContinue | ' +
+         'Where-Object {$_.Path -and $_.Path.StartsWith($d,[StringComparison]::OrdinalIgnoreCase)} | ' +
+         'Stop-Process -Force -ErrorAction SilentlyContinue';
   Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
        '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' + Cmd + '"',
        '', SW_HIDE, ewWaitUntilTerminated, Code);

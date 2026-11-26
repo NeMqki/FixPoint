@@ -914,8 +914,17 @@ def _window_browser() -> str | None:
 
 def open_window(url: str) -> bool:
     """FixPoint 専用のウィンドウで開く (アドレスバーやタブのないアプリ用の表示)。
-    いつものブラウザとは別のプロファイルを使うので、ふだんのタブや拡張機能とは混ざらない。
+    インストール版は FixPoint アプリ (FixPoint.exe, Tauri) で開く。
+    無ければ Edge / Chrome のアプリ表示 (ふだんのタブや拡張機能とは混ざらない別のプロファイル)。
     専用ウィンドウにできなければ、いつものブラウザで開いて False を返す。"""
+    app_exe = HERE / "FixPoint.exe"
+    if os.name == "nt" and app_exe.is_file():
+        port = urlparse(url).port
+        try:
+            subprocess.Popen([str(app_exe)] + (["--port", str(port)] if port else []), close_fds=True, cwd=str(HERE))
+            return True
+        except OSError:
+            pass
     exe = _window_browser()
     if exe:
         prof = data_dir() / "window"

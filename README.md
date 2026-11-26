@@ -4,7 +4,7 @@
 
 たとえば Claude が書いて、Grok がレビューして、気になるところがあればまた直す。
 誰かひとりでも納得していなければ、ループは続きます。全員が OK を出したところで、作業が終わります。
-その様子は、ブラウザでずっと見ていられます。
+その様子は、FixPoint のアプリでずっと見ていられます。
 
 ## はじめかた
 
@@ -110,15 +110,28 @@ Claude Code なら、フックを入れておくと、ほかのAIが触ってい
 タグに書いたメッセージは、リリースページと、アプリの「新しいバージョンがあります」のお知らせに表示されます。
 
 ```powershell
-git tag -a v0.4.0 -m "Gemini CLI に対応しました"
+git tag -a v0.6.0 -m "Gemini CLI に対応しました"
 ```
 
 ```powershell
-git push origin v0.4.0
+git push origin v0.6.0
 ```
 
+アプリの窓と起動アニメーションは [Tauri](https://tauri.app/) で作っています（`desktop/`）。
+中身の画面と AI のやりとりは、これまでどおり Python（`fixpoint.py`）が担当していて、アプリはそれを表示する窓です。
 インストーラーは [Inno Setup](https://jrsoftware.org/isinfo.php) で作っています（`installer/fixpoint.iss`）。
-手元で作るときは Inno Setup 6 を入れて `python publish.py` を実行すると、`dist/fixpoint-setup.exe` ができます。
+
+手元で作るときは、Rust と Inno Setup 6 を入れてから、この順に実行すると `dist/fixpoint-setup.exe` ができます。
+
+```powershell
+cd desktop; cargo build --release; cd ..
+```
+
+```powershell
+python publish.py
+```
+
+起動アニメーションだけ見たいときは、`desktop/splash/index.html` をブラウザで開いてください。
 
 ## ライセンス
 

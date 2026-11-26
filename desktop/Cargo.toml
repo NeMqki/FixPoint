@@ -1,0 +1,28 @@
+# FixPoint のデスクトップアプリ (Tauri)。
+# 起動アニメーションを出しながら、同梱の Python で FixPoint を起動し、準備ができたらその画面を表示する。
+# ビルド: cargo build --release  →  target/release/fixpoint-app.exe (publish.py が FixPoint.exe としてインストーラーに入れる)
+[package]
+name = "fixpoint-app"
+version = "0.6.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+serde_json = "1"
+
+[features]
+# tauri CLI を使わずに cargo build するので、埋め込んだ画面を使う設定をここで有効にする
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

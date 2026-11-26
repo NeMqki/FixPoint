@@ -26,6 +26,10 @@
 }}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.65 var(--sans)}
+/* 起動アニメーションから切り替わったとき、画面がふわっと出てくるように */
+body{animation:appIn .5s cubic-bezier(.2,.8,.3,1)}
+@keyframes appIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){body{animation:none}}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:5px 12px;cursor:pointer}
 button:hover{background:var(--surface2)}
@@ -300,6 +304,7 @@ const $ = s => document.querySelector(s);
 const H = {"Content-Type":"application/json","X-Fixpoint":"1"};
 const COLORS = [["#e6f1fb","#0c447c"],["#eeedfe","#3c3489"],["#e1f5ee","#085041"],["#faece7","#712b13"],["#fbeaf0","#72243e"],["#faeeda","#633806"]];
 const DARK = matchMedia("(prefers-color-scheme: dark)").matches;
+const IN_APP = new URLSearchParams(location.search).has("app");  // FixPoint アプリ (Tauri) の中で開いている
 const colorOf = i => { const c = COLORS[i % COLORS.length]; return DARK ? [c[1], c[0]] : c; };
 const VLABEL = {APPROVE:"OK",CHANGES:"直してほしい",UNKNOWN:"判定なし",ERROR:"エラー"};
 // 履歴の JSONL はプロジェクト側が作れる。HTML に入れるのは数値と、上のキーだけ。
@@ -678,6 +683,7 @@ $("#btnUpd").onclick=async()=>{try{const r=await post("/api/update_now");if(!r.u
 $("#btnQuit").onclick=async()=>{
   if(mode()==="running" && !confirm("AIが作業中です。止めて終了しますか？")) return;
   try{await post("/api/shutdown")}catch(e){}
+  if(IN_APP){location.replace("/__quit");return}  // FixPoint アプリならアプリごと閉じる
   window.close();  // 専用ウィンドウならそのまま閉じる (ふつうのタブでは閉じられないので下の表示が残る)
   document.body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2)">FixPoint を終了しました。スタートメニューの「FixPoint」からまた起動できます。</div>';
 };

@@ -12,7 +12,9 @@
 --source はインストーラーに埋め込まれ、インストールされた FixPoint がその場所を見に行きます。
 既定は GitHub の「最新リリースの添付ファイル」: https://github.com/NeMqki/FixPoint/releases/latest/download
 
-インストーラーを作るには Inno Setup 6 (ISCC.exe) が必要です。無いときは --no-installer で自動更新用だけ作れます。
+インストーラーを作るには Inno Setup 6 (ISCC.exe) と、先にビルドした FixPoint アプリ
+(desktop/ で cargo build --release → desktop/target/release/fixpoint-app.exe) が必要です。
+無いときは --no-installer で自動更新用だけ作れます。
 """
 from __future__ import annotations
 
@@ -85,10 +87,13 @@ def find_iscc() -> str | None:
     return next((c for c in cands if c and Path(c).is_file()), None)
 
 
-def build_installer(files: dict[str, bytes], version: str, notes: str, source: str, build: Path, dist: Path) -> Path:
+def build_installer(files: dict[str, bytes], version: str, notes: str, source: str, build: Path, dist: Path,
+                    app_exe: Path) -> Path:
     iscc = find_iscc()
     if not iscc:
         raise SystemExit("Inno Setup 6 (ISCC.exe) が見つかりません。入れるか、--no-installer を付けてください")
+    if not app_exe.is_file():
+        raise SystemExit(f"FixPoint アプリ ({app_exe}) がありません。先に desktop/ で cargo build --release してください")
     if build.exists():
         shutil.rmtree(build)
     app, py = build / "app", build / "python"
@@ -106,7 +111,8 @@ def build_installer(files: dict[str, bytes], version: str, notes: str, source: s
     if out.exists():
         out.unlink()
     subprocess.run([iscc, "/Q", f"/DAppVer={version}", f"/DUpdateSource={source}", f"/DAppDir={app}",
-                    f"/DPyDir={py}", f"/DOutDir={dist}", str(ROOT / "installer" / "fixpoint.iss")], check=True)
+                    f"/DPyDir={py}", f"/DAppExe={app_exe.resolve()}", f"/DOutDir={dist}",
+                    str(ROOT / "installer" / "fixpoint.iss")], check=True)
     return out
 
 
@@ -119,6 +125,8 @@ def main():
     ap.add_argument("--dist-dir", default=str(ROOT / "dist"))
     ap.add_argument("--build-dir", default=str(ROOT / "build"))
     ap.add_argument("--no-installer", action="store_true", help="インストーラーを作らない (自動更新用のファイルだけ)")
+    ap.add_argument("--app-exe", default=str(ROOT / "desktop" / "target" / "release" / "fixpoint-app.exe"),
+                    help="インストーラーに入れる FixPoint アプリ (Tauri でビルドしたもの)")
     a = ap.parse_args()
 
     if a.version:
@@ -143,7 +151,7 @@ def main():
     # 2. インストーラー fixpoint-setup.exe (Python 同梱)
     out = None
     if not a.no_installer:
-        out = build_installer(files, version, a.notes, a.source, Path(a.build_dir), Path(a.dist_dir))
+        out = build_installer(files, version, a.notes, a.source, Path(a.build_dir), Path(a.dist_dir), Path(a.app_exe))
         shutil.copy2(out, rel / out.name)
 
     # 3. リリースページの本文 (日本語)
